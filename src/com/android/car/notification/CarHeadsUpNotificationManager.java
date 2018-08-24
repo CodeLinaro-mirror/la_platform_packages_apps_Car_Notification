@@ -19,6 +19,7 @@ import android.app.Notification;
 import android.app.NotificationManager;
 import android.content.Context;
 import android.graphics.PixelFormat;
+import android.os.Bundle;
 import android.os.Handler;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -33,7 +34,6 @@ import android.widget.FrameLayout;
  * Notification Manager for heads-up notifications in car.
  */
 public class CarHeadsUpNotificationManager {
-
     private static CarHeadsUpNotificationManager sManager;
     private final Context mContext;
     private final WindowManager mWindowManager;
@@ -84,7 +84,7 @@ public class CarHeadsUpNotificationManager {
         wrapperParams.gravity = Gravity.TOP;
         mWrapper = new FrameLayout(mContext);
         mWrapper.setPadding(
-                0, mContext.getResources().getDimensionPixelOffset(R.dimen.car_padding_4), 0, 0);
+                0, mContext.getResources().getDimensionPixelOffset(R.dimen.car_padding_1), 0, 0);
         mWindowManager.addView(mWrapper, wrapperParams);
     }
 
@@ -109,21 +109,29 @@ public class CarHeadsUpNotificationManager {
         View notificationView;
         @NotificationViewType int viewType = getNotificationViewType(statusBarNotification);
         switch (viewType) {
-            case NotificationViewType.HEADS_UP_MESSAGING_NOTIFICATION_VIEW_TYPE: {
+            case NotificationViewType.MESSAGE_HEADSUP: {
                 notificationView = mInflater.inflate(
-                        R.layout.car_messaging_headsup_notification_template, mWrapper);
-                NotificationTemplateMessagingViewHolder holder =
-                        new NotificationTemplateMessagingViewHolder(notificationView, mContext);
-                holder.bind(statusBarNotification);
+                        R.layout.message_headsup_notification_template, mWrapper);
+                MessageNotificationViewHolder holder =
+                        new MessageNotificationViewHolder(notificationView);
+                holder.bind(statusBarNotification, /* isInGroup= */ false);
                 break;
             }
-            case NotificationViewType.HEADS_UP_BASIC_NOTIFICATION_VIEW_TYPE:
+            case NotificationViewType.INBOX_HEADSUP: {
+                notificationView = mInflater.inflate(
+                        R.layout.inbox_headsup_notification_template, mWrapper);
+                InboxNotificationViewHolder holder =
+                        new InboxNotificationViewHolder(notificationView);
+                holder.bind(statusBarNotification, /* isInGroup= */ false);
+                break;
+            }
+            case NotificationViewType.BASIC_HEADSUP:
             default: {
                 notificationView = mInflater.inflate(
-                        R.layout.car_basic_headsup_notification_template, mWrapper);
-                NotificationTemplateBasicViewHolder holder =
-                        new NotificationTemplateBasicViewHolder(notificationView, mContext);
-                holder.bind(statusBarNotification);
+                        R.layout.basic_headsup_notification_template, mWrapper);
+                BasicNotificationViewHolder holder =
+                        new BasicNotificationViewHolder(notificationView);
+                holder.bind(statusBarNotification, /* isInGroup= */ false);
                 break;
             }
         }
@@ -177,9 +185,14 @@ public class CarHeadsUpNotificationManager {
     private static int getNotificationViewType(StatusBarNotification statusBarNotification) {
         String category = statusBarNotification.getNotification().category;
         if (Notification.CATEGORY_MESSAGE.equals(category)) {
-            return NotificationViewType.HEADS_UP_MESSAGING_NOTIFICATION_VIEW_TYPE;
+            return NotificationViewType.MESSAGE_HEADSUP;
         }
-        return NotificationViewType.HEADS_UP_BASIC_NOTIFICATION_VIEW_TYPE;
+        Bundle extras = statusBarNotification.getNotification().extras;
+        if (extras.containsKey(Notification.EXTRA_BIG_TEXT)
+                && extras.containsKey(Notification.EXTRA_SUMMARY_TEXT)) {
+            return NotificationViewType.INBOX_HEADSUP;
+        }
+        return NotificationViewType.BASIC_HEADSUP;
     }
 
     /**

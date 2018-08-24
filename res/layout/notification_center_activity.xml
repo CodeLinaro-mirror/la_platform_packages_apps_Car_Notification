@@ -50,7 +50,7 @@
         android:gravity="center_vertical"
         android:maxLines="1"
         android:text="@string/notifications"
-        android:textAppearance="@style/TextAppearance.Car.Title2"/>
+        android:textAppearance="@style/TextAppearance.Car.Body1.Medium"/>
 
     <View
         android:layout_width="match_parent"
@@ -67,6 +67,5 @@
         app:listContentTopOffset="@dimen/car_padding_2"
         app:itemSpacing="@dimen/car_padding_2"
         app:showPagedListViewDivider="false"
-        app:gutter="both"
-        app:dayNightStyle="auto"/>
+        app:gutter="both" />
 </RelativeLayout>
