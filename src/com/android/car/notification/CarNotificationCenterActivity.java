@@ -16,11 +16,9 @@
 package com.android.car.notification;
 
 import android.app.Activity;
-import android.app.Notification;
-import android.app.NotificationManager;
 import android.car.Car;
 import android.car.CarNotConnectedException;
-import android.car.content.pm.CarPackageManager;
+import android.car.drivingstate.CarUxRestrictions;
 import android.car.drivingstate.CarUxRestrictionsManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -30,8 +28,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
-import android.os.RemoteException;
-import android.os.UserHandle;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 
@@ -50,53 +46,9 @@ public class CarNotificationCenterActivity extends Activity {
     private boolean mNotificationListenerBound;
     private CarNotificationListener mNotificationListener;
     private CarNotificationViewAdapter mAdapter;
-    private NotificationManager mNotificationManager;
     private CarHeadsUpNotificationManager mHeadsUpNotificationManager;
     private PreprocessingManager mPreprocessingManager;
     private Car mCar;
-    private CarUxRestrictionsManager mCarUxRestrictionsManager;
-    private CarPackageManager mCarPackageManager;
-
-    private ItemTouchHelper.SimpleCallback mItemTouchCallback =
-            new ItemTouchHelper.SimpleCallback(
-                    ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT,
-                    ItemTouchHelper.LEFT | ItemTouchHelper.RIGHT) {
-                @Override
-                public boolean onMove(
-                        RecyclerView recyclerView,
-                        RecyclerView.ViewHolder viewHolder,
-                        RecyclerView.ViewHolder target) {
-                    // no-op
-                    return false;
-                }
-
-                @Override
-                public void onSwiped(RecyclerView.ViewHolder viewHolder, int direction) {
-                    NotificationGroup notificationGroup =
-                            mAdapter.getNotificationAtPosition(viewHolder.getAdapterPosition());
-
-                    // TODO: implement dismissal for grouped notification
-                    StatusBarNotification notification =
-                            notificationGroup.isGroup()
-                                    ? notificationGroup.getGroupHeaderNotification()
-                                    : notificationGroup.getSingleNotification();
-
-                    if (isCancelable(notification.getNotification())) {
-                        try {
-                            mNotificationManager.getService().cancelNotificationWithTag(
-                                    notification.getPackageName(),
-                                    notification.getTag(),
-                                    notification.getId(),
-                                    UserHandle.USER_SYSTEM);
-                        } catch (RemoteException e) {
-                            throw e.rethrowFromSystemServer();
-                        }
-                    } else {
-                        // TODO: better animation for items not allowed to be dismissed.
-                        updateNotifications();
-                    }
-                }
-            };
 
     private ServiceConnection mCarConnectionListener = new ServiceConnection() {
         @Override
@@ -105,15 +57,9 @@ public class CarNotificationCenterActivity extends Activity {
                 CarUxRestrictionsManager manager = (CarUxRestrictionsManager) mCar.getCarManager(
                         Car.CAR_UX_RESTRICTION_SERVICE);
 
-                mAdapter.setIsDistractionOptimizationRequired(
-                        manager.getCurrentCarUxRestrictions().isRequiresDistractionOptimization());
-
+                mAdapter.setCarUxRestrictions(manager.getCurrentCarUxRestrictions());
                 manager.registerListener(
-                        restrictionInfo ->
-                                mAdapter.setIsDistractionOptimizationRequired(
-                                        restrictionInfo.isRequiresDistractionOptimization()));
-
-                mCarPackageManager = (CarPackageManager) mCar.getCarManager(Car.PACKAGE_SERVICE);
+                        restrictionInfo -> mAdapter.setCarUxRestrictions(restrictionInfo));
             } catch (CarNotConnectedException e) {
                 Log.e(TAG, "Car not connected in CarConnectionListener", e);
             }
@@ -122,7 +68,6 @@ public class CarNotificationCenterActivity extends Activity {
         @Override
         public void onServiceDisconnected(ComponentName name) {
             Log.e(TAG, "Car service disconnected unexpectedly");
-            mCarPackageManager = null;
         }
     };
 
@@ -145,11 +90,9 @@ public class CarNotificationCenterActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        mPreprocessingManager = new PreprocessingManager(this);
+        mPreprocessingManager = PreprocessingManager.getInstance(getApplicationContext());
         mHeadsUpNotificationManager =
                 CarHeadsUpNotificationManager.getInstance(getApplicationContext());
-        mNotificationManager =
-                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         mCar = Car.createCar(this, mCarConnectionListener);
 
         setContentView(R.layout.notification_center_activity);
@@ -158,7 +101,25 @@ public class CarNotificationCenterActivity extends Activity {
         mAdapter = new CarNotificationViewAdapter(this, /* isGroupNotificationAdapter= */ false);
         listView.setAdapter(mAdapter);
 
-        new ItemTouchHelper(mItemTouchCallback).attachToRecyclerView(listView.getRecyclerView());
+        new ItemTouchHelper(
+                new CarNotificationItemTouchHelper(this, mAdapter) {
+                    @Override
+                    public int getSwipeDirs(RecyclerView recyclerView,
+                            RecyclerView.ViewHolder viewHolder) {
+                        if (viewHolder instanceof GroupNotificationViewHolder) {
+                            String groupKey =
+                                    mAdapter.getNotificationAtPosition(
+                                            viewHolder.getAdapterPosition()).getGroupKey();
+                            // disable swiping for expanded group notifications, so that the child
+                            // recycler view can receive the touch event
+                            if (mAdapter.isExpanded(groupKey)) {
+                                return 0;
+                            }
+                        }
+                        return super.getSwipeDirs(recyclerView, viewHolder);
+                    }
+                })
+                .attachToRecyclerView(listView.getRecyclerView());
     }
 
     @Override
@@ -201,7 +162,7 @@ public class CarNotificationCenterActivity extends Activity {
                 mHeadsUpNotificationManager =
                         CarHeadsUpNotificationManager.getInstance(getApplicationContext());
                 mHeadsUpNotificationManager.maybeShowHeadsUp(
-                        mAdapter.getIsDistractionOptimizationRequired(),
+                        mNotificationListener.getCarUxRestrictions(),
                         (StatusBarNotification) message.obj,
                         mNotificationListener.getCurrentRanking());
                 updateNotifications();
@@ -209,16 +170,11 @@ public class CarNotificationCenterActivity extends Activity {
         }
     }
 
-    private boolean isCancelable(Notification notification) {
-        return (notification.flags
-                & (Notification.FLAG_FOREGROUND_SERVICE
-                | Notification.FLAG_NO_CLEAR
-                | Notification.FLAG_ONGOING_EVENT)) == 0;
-    }
-
     private void updateNotifications() {
-        mAdapter.setNotifications(mPreprocessingManager.process(
-                mNotificationListener.getNotifications(),
-                mNotificationListener.getCurrentRanking()));
+        mAdapter.setNotifications(
+                mPreprocessingManager.process(
+                        mNotificationListener.getCarUxRestrictions(),
+                        mNotificationListener.getNotifications(),
+                        mNotificationListener.getCurrentRanking()));
     }
 }
