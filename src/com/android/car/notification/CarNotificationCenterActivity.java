@@ -52,6 +52,7 @@ public class CarNotificationCenterActivity extends Activity {
     private CarNotificationViewAdapter mAdapter;
     private NotificationManager mNotificationManager;
     private CarHeadsUpNotificationManager mHeadsUpNotificationManager;
+    private PreprocessingManager mPreprocessingManager;
     private Car mCar;
     private CarUxRestrictionsManager mCarUxRestrictionsManager;
     private CarPackageManager mCarPackageManager;
@@ -71,8 +72,15 @@ public class CarNotificationCenterActivity extends Activity {
 
                 @Override
                 public void onSwiped(RecyclerView.ViewHolder viewHolder, int direction) {
-                    StatusBarNotification notification =
+                    NotificationGroup notificationGroup =
                             mAdapter.getNotificationAtPosition(viewHolder.getAdapterPosition());
+
+                    // TODO: implement dismissal for grouped notification
+                    StatusBarNotification notification =
+                            notificationGroup.isGroup()
+                                    ? notificationGroup.getGroupHeaderNotification()
+                                    : notificationGroup.getSingleNotification();
+
                     if (isCancelable(notification.getNotification())) {
                         try {
                             mNotificationManager.getService().cancelNotificationWithTag(
@@ -94,14 +102,13 @@ public class CarNotificationCenterActivity extends Activity {
         @Override
         public void onServiceConnected(ComponentName name, IBinder service) {
             try {
-                mCarUxRestrictionsManager = (CarUxRestrictionsManager) mCar.getCarManager(
+                CarUxRestrictionsManager manager = (CarUxRestrictionsManager) mCar.getCarManager(
                         Car.CAR_UX_RESTRICTION_SERVICE);
-                mAdapter.setIsDistractionOptimizationRequired(
-                        mCarUxRestrictionsManager
-                                .getCurrentCarUxRestrictions()
-                                .isRequiresDistractionOptimization());
 
-                mCarUxRestrictionsManager.registerListener(
+                mAdapter.setIsDistractionOptimizationRequired(
+                        manager.getCurrentCarUxRestrictions().isRequiresDistractionOptimization());
+
+                manager.registerListener(
                         restrictionInfo ->
                                 mAdapter.setIsDistractionOptimizationRequired(
                                         restrictionInfo.isRequiresDistractionOptimization()));
@@ -114,7 +121,7 @@ public class CarNotificationCenterActivity extends Activity {
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
-            mCarUxRestrictionsManager = null;
+            Log.e(TAG, "Car service disconnected unexpectedly");
             mCarPackageManager = null;
         }
     };
@@ -138,6 +145,7 @@ public class CarNotificationCenterActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        mPreprocessingManager = new PreprocessingManager(this);
         mHeadsUpNotificationManager =
                 CarHeadsUpNotificationManager.getInstance(getApplicationContext());
         mNotificationManager =
@@ -147,7 +155,7 @@ public class CarNotificationCenterActivity extends Activity {
         setContentView(R.layout.notification_center_activity);
         findViewById(R.id.exit_button_container).setOnClickListener(v -> finish());
         PagedListView listView = findViewById(R.id.notifications);
-        mAdapter = new CarNotificationViewAdapter(this);
+        mAdapter = new CarNotificationViewAdapter(this, /* isGroupNotificationAdapter= */ false);
         listView.setAdapter(mAdapter);
 
         new ItemTouchHelper(mItemTouchCallback).attachToRecyclerView(listView.getRecyclerView());
@@ -157,7 +165,9 @@ public class CarNotificationCenterActivity extends Activity {
     protected void onStart() {
         super.onStart();
         // Connect to car service
-        mCar.connect();
+        if (mCar != null) {
+            mCar.connect();
+        }
 
         // Bind notification listener
         Intent intent = new Intent(this, CarNotificationListener.class);
@@ -170,13 +180,6 @@ public class CarNotificationCenterActivity extends Activity {
         super.onStop();
 
         // Disconnect from car service
-        try {
-            if (mCarUxRestrictionsManager != null) {
-                mCarUxRestrictionsManager.unregisterListener();
-            }
-        } catch (CarNotConnectedException e) {
-            Log.e(TAG, "Error unregistering car listeners", e);
-        }
         if (mCar != null) {
             mCar.disconnect();
         }
@@ -195,6 +198,8 @@ public class CarNotificationCenterActivity extends Activity {
                 updateNotifications();
 
             } else if (message.what == CarNotificationListener.NOTIFY_NOTIFICATION_ADDED) {
+                mHeadsUpNotificationManager =
+                        CarHeadsUpNotificationManager.getInstance(getApplicationContext());
                 mHeadsUpNotificationManager.maybeShowHeadsUp(
                         mAdapter.getIsDistractionOptimizationRequired(),
                         (StatusBarNotification) message.obj,
@@ -212,7 +217,7 @@ public class CarNotificationCenterActivity extends Activity {
     }
 
     private void updateNotifications() {
-        mAdapter.setNotifications(RankingAndFilteringManager.process(
+        mAdapter.setNotifications(mPreprocessingManager.process(
                 mNotificationListener.getNotifications(),
                 mNotificationListener.getCurrentRanking()));
     }

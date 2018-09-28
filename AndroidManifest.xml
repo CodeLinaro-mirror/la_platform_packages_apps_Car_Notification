@@ -29,11 +29,12 @@
         <activity
             android:name=".CarNotificationCenterActivity"
             android:label="@string/application_label"
-            android:theme="@style/Theme.Car.NoActionBar"
+            android:theme="@style/Theme.Car.Light.NoActionBar"
             android:launchMode="singleInstance"
             android:noHistory="true"
             android:exported="true"
             android:stateNotNeeded="true">
+            <meta-data android:name="distractionOptimized" android:value="true"/>
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -41,7 +42,8 @@
           </activity>
           <service android:name=".CarNotificationListener"
               android:label="@string/notification_service_label"
-              android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+              android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
+              android:directBootAware="true">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService"/>
             </intent-filter>
