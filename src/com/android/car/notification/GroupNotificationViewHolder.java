@@ -15,14 +15,15 @@
  */
 package com.android.car.notification;
 
+import android.app.NotificationManager;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
-import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.widget.Button;
 
+import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -43,12 +44,16 @@ public class GroupNotificationViewHolder extends RecyclerView.ViewHolder {
     private final Paint mPaint;
     private final int mDividerMargin;
     private final int mDividerHeight;
+    private final NotificationManager mNotificationManager;
 
     public GroupNotificationViewHolder(View view) {
         super(view);
         mContext = view.getContext();
+
         mToggleButton = view.findViewById(R.id.toggle_button);
         mNotificationListView = view.findViewById(R.id.notification_list);
+        mNotificationManager =
+                (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
 
         int carAccentColor = mContext.getColor(R.color.car_body2);
         mExpandDrawable = mContext.getDrawable(R.drawable.expand_more);
@@ -67,20 +72,25 @@ public class GroupNotificationViewHolder extends RecyclerView.ViewHolder {
         mNotificationListView.setNestedScrollingEnabled(false);
         mAdapter = new CarNotificationViewAdapter(mContext, /* isGroupNotificationAdapter= */ true);
         mNotificationListView.setAdapter(mAdapter);
+
+        new ItemTouchHelper(new CarNotificationItemTouchHelper(mContext, mAdapter))
+                .attachToRecyclerView(mNotificationListView);
     }
 
     public void bind(
             NotificationGroup group, CarNotificationViewAdapter parentAdapter, boolean isExpanded) {
 
-        // use the same view pool as the parent recycler view
-        // so that all child recycler views can share the same view pool with the parent
+        mAdapter.setCarUxRestrictions(parentAdapter.getCarUxRestrictions());
+
+        // use the same view pool with all the grouped notifications
         // to increase the number of the shared views and reduce memory cost
+        // the view pool is created and stored in the root adapter
         mNotificationListView.setRecycledViewPool(parentAdapter.getViewPool());
 
         // bind expand button
         updateToggleButton(group.getChildCount(), isExpanded);
         mToggleButton.setOnClickListener(
-                view -> parentAdapter.toggleExpansion(group.getGroupKey(), !isExpanded));
+                view -> parentAdapter.setExpanded(group.getGroupKey(), !isExpanded));
 
         // bind notification cards
         List<NotificationGroup> list = new ArrayList<>();
@@ -93,9 +103,13 @@ public class GroupNotificationViewHolder extends RecyclerView.ViewHolder {
             });
         } else {
             // only show group header
-            NotificationGroup notificationGroup = new NotificationGroup();
-            notificationGroup.addNotification(group.getGroupHeaderNotification());
-            list.add(notificationGroup);
+            NotificationGroup newGroup = new NotificationGroup();
+            newGroup.addNotification(group.getGroupHeaderNotification());
+            // If the group header is automatically generated, it does not contain a summary of
+            // the titles of the child notifications. Therefore, we generate a list of
+            // the child notification titles from the parent notification group, and pass them on.
+            newGroup.setChildTitles(group.generateChildTitles());
+            list.add(newGroup);
         }
         mAdapter.setNotifications(list);
     }
