@@ -16,6 +16,6 @@
 -->
 <resources>
     <dimen name="notification_card_radius">@dimen/car_radius_2</dimen>
-    <dimen name="headsup_notification_action_bar_height">96dp</dimen>
+    <dimen name="media_action_icon_size">@dimen/car_primary_icon_size</dimen>
     <dimen name="headsup_scrim_height_below_notification">164dp</dimen>
 </resources>
