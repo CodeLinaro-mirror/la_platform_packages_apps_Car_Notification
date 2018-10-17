@@ -15,7 +15,6 @@
  */
 package com.android.car.notification;
 
-import android.app.NotificationManager;
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
@@ -26,6 +25,7 @@ import android.widget.Button;
 import androidx.recyclerview.widget.ItemTouchHelper;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -44,7 +44,6 @@ public class GroupNotificationViewHolder extends RecyclerView.ViewHolder {
     private final Paint mPaint;
     private final int mDividerMargin;
     private final int mDividerHeight;
-    private final NotificationManager mNotificationManager;
 
     public GroupNotificationViewHolder(View view) {
         super(view);
@@ -52,8 +51,6 @@ public class GroupNotificationViewHolder extends RecyclerView.ViewHolder {
 
         mToggleButton = view.findViewById(R.id.toggle_button);
         mNotificationListView = view.findViewById(R.id.notification_list);
-        mNotificationManager =
-                (NotificationManager) mContext.getSystemService(Context.NOTIFICATION_SERVICE);
 
         int carAccentColor = mContext.getColor(R.color.car_body2);
         mExpandDrawable = mContext.getDrawable(R.drawable.expand_more);
@@ -69,6 +66,8 @@ public class GroupNotificationViewHolder extends RecyclerView.ViewHolder {
 
         mNotificationListView.setLayoutManager(new LinearLayoutManager(mContext));
         mNotificationListView.addItemDecoration(new GroupedNotificationItemDecoration());
+        ((SimpleItemAnimator) mNotificationListView.getItemAnimator())
+                .setSupportsChangeAnimations(false);
         mNotificationListView.setNestedScrollingEnabled(false);
         mAdapter = new CarNotificationViewAdapter(mContext, /* isGroupNotificationAdapter= */ true);
         mNotificationListView.setAdapter(mAdapter);
