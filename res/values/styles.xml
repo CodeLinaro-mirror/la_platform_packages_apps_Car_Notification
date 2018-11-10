@@ -15,23 +15,26 @@
     limitations under the License.
 -->
 <resources>
-    <style name="NotificationTitleText">
-        <item name="android:ellipsize">end</item>
+    <style name="NotificationTitleText" parent="TextAppearance.Car.Body1.Light">
         <item name="android:maxLines">1</item>
-        <item name="android:textAppearance">@style/TextAppearance.Car.Body1</item>
+        <item name="android:ellipsize">end</item>
     </style>
 
-    <style name="AvatarIcon">
+    <style name="NotificationImageIcon">
         <item name="android:scaleType">fitCenter</item>
-        <item name="android:background">@drawable/round_button</item>
+        <item name="android:background">@null</item>
     </style>
 
-    <style name="NotificationActionButton"
-           parent="Widget.Car.Button.Borderless.Colored">
+    <style name="NotificationActionButton" parent="Widget.Car.Button.Borderless.Colored">
         <item name="android:minWidth">0dp</item>
         <item name="android:drawablePadding">@dimen/car_padding_1</item>
         <item name="android:gravity">start|center_vertical</item>
-        <item name="android:textColor">@color/notification_action_button_text_color</item>
+        <item name="android:textColor">@color/action_button_text_color</item>
+        <item name="android:maxLines">1</item>
+        <item name="android:ellipsize">end</item>
+    </style>
+
+    <style name="NotificationHeaderText" parent="TextAppearance.Car.Body3.Light">
         <item name="android:maxLines">1</item>
         <item name="android:ellipsize">end</item>
     </style>
