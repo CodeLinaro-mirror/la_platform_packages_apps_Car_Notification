@@ -16,6 +16,7 @@
 package com.android.car.notification;
 
 import android.app.Notification;
+import android.car.drivingstate.CarUxRestrictions;
 import android.content.Context;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
@@ -43,8 +44,8 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     private final List<String> mExpandedNotifications = new ArrayList<>();
 
     private List<NotificationGroup> mNotifications = new ArrayList<>();
-    private boolean mIsDistractionOptimizationRequired;
     private RecyclerView.RecycledViewPool mViewPool;
+    private CarUxRestrictions mCarUxRestrictions;
 
     /**
      * Constructor for a notification adapter.
@@ -73,15 +74,28 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                         R.layout.group_notification_template, parent, false);
                 viewHolder = new GroupNotificationViewHolder(view);
                 break;
+            case NotificationViewType.GROUP_SUMMARY:
+                view = mInflater
+                        .inflate(R.layout.group_summary_notification_template, parent, false);
+                viewHolder = new GroupSummaryNotificationViewHolder(view);
+                break;
+            case NotificationViewType.EMERGENCY:
+                view = mInflater.inflate(
+                        R.layout.emergency_notification_template, parent, false);
+                viewHolder = new EmergencyNotificationViewHolder(view);
+                break;
             case NotificationViewType.MESSAGE_IN_GROUP:
                 view = mInflater.inflate(
                         R.layout.message_notification_template_inner, parent, false);
                 viewHolder = new MessageNotificationViewHolder(view);
                 break;
             case NotificationViewType.MESSAGE:
-                view = mInflater.inflate(
-                        R.layout.message_notification_template, parent, false);
+                view = mInflater.inflate(R.layout.message_notification_template, parent, false);
                 viewHolder = new MessageNotificationViewHolder(view);
+                break;
+            case NotificationViewType.MEDIA:
+                view = mInflater.inflate(R.layout.media_notification_template, parent, false);
+                viewHolder = new MediaNotificationViewHolder(view);
                 break;
             case NotificationViewType.PROGRESS_IN_GROUP:
                 view = mInflater.inflate(
@@ -129,11 +143,24 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             case NotificationViewType.GROUP_COLLAPSED:
                 ((GroupNotificationViewHolder) holder).bind(notificationGroup, this, false);
                 break;
+            case NotificationViewType.GROUP_SUMMARY:
+                ((GroupSummaryNotificationViewHolder) holder).bind(notificationGroup);
+                break;
+            case NotificationViewType.EMERGENCY: {
+                StatusBarNotification notification = notificationGroup.getSingleNotification();
+                ((EmergencyNotificationViewHolder) holder).bind(notification);
+                break;
+            }
             case NotificationViewType.MESSAGE_IN_GROUP:
             case NotificationViewType.MESSAGE: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 ((MessageNotificationViewHolder) holder)
                         .bind(notification, /* isInGroup= */ mIsGroupNotificationAdapter);
+                break;
+            }
+            case NotificationViewType.MEDIA: {
+                StatusBarNotification notification = notificationGroup.getSingleNotification();
+                ((MediaNotificationViewHolder) holder).bind(notification);
                 break;
             }
             case NotificationViewType.PROGRESS_IN_GROUP:
@@ -177,11 +204,22 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                 notificationGroup.getSingleNotification().getNotification();
         Bundle extras = notification.extras;
 
+        // car emergency
+        boolean isEmergency = Notification.CATEGORY_CAR_EMERGENCY.equals(notification.category);
+        if (isEmergency) {
+            return NotificationViewType.EMERGENCY;
+        }
+
         // messaging
         boolean isMessage = Notification.CATEGORY_MESSAGE.equals(notification.category);
         if (isMessage) {
             return mIsGroupNotificationAdapter
                     ? NotificationViewType.MESSAGE_IN_GROUP : NotificationViewType.MESSAGE;
+        }
+
+        // media
+        if (notification.isMediaNotification()) {
+            return NotificationViewType.MEDIA;
         }
 
         // progress
@@ -206,7 +244,12 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                     ? NotificationViewType.INBOX_IN_GROUP : NotificationViewType.INBOX;
         }
 
-        // basic, big text, and big picture
+        // group summary
+        boolean isGroupSummary = notificationGroup.getChildTitles() != null;
+        if (isGroupSummary) {
+            return NotificationViewType.GROUP_SUMMARY;
+        }
+
         // the big text and big picture styles are fallen back to basic template in car
         // i.e. setting the big text and big picture does not have an effect
         boolean isBigText = extras.containsKey(Notification.EXTRA_BIG_TEXT);
@@ -218,25 +261,53 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             Log.i(TAG, "Big picture style is not supported as a car notification");
         }
 
+        // basic, big text, big picture, car warning and car information
         return mIsGroupNotificationAdapter
                 ? NotificationViewType.BASIC_IN_GROUP : NotificationViewType.BASIC;
     }
 
     @Override
     public int getItemCount() {
-        return mNotifications.size();
+        int itemCount = mNotifications.size();
+
+        if (!mIsGroupNotificationAdapter
+                && mCarUxRestrictions != null
+                && (mCarUxRestrictions.getActiveRestrictions()
+                    & CarUxRestrictions.UX_RESTRICTIONS_LIMIT_CONTENT) != 0) {
+
+            int maxItemCount = mCarUxRestrictions.getMaxCumulativeContentItems();
+
+            return Math.min(itemCount, maxItemCount);
+        }
+        return itemCount;
     }
 
-    void toggleExpansion(String groupKey, boolean isExpanded) {
-        if (mExpandedNotifications.contains(groupKey) && !isExpanded) {
-            mExpandedNotifications.remove(groupKey);
-            int index = findIndexInNotification(groupKey);
-            notifyItemChanged(index);
-        } else if (!mExpandedNotifications.contains(groupKey) && isExpanded) {
-            mExpandedNotifications.add(groupKey);
-            int index = findIndexInNotification(groupKey);
-            notifyItemChanged(index);
+    /**
+     * Set the expansion state of a group notification given its group key.
+     *
+     * @param groupKey   the unique identifier of a {@link NotificationGroup}
+     * @param isExpanded whether the group notification should be expanded.
+     */
+    void setExpanded(String groupKey, boolean isExpanded) {
+        if (isExpanded(groupKey) == isExpanded) {
+            return;
         }
+
+        if (isExpanded) {
+            mExpandedNotifications.add(groupKey);
+        } else {
+            mExpandedNotifications.remove(groupKey);
+        }
+
+        int index = findIndexInNotification(groupKey);
+        notifyItemChanged(index);
+    }
+
+    /**
+     * Returns whether the notification is expanded given its group key.
+     */
+    boolean isExpanded(String groupKey) {
+        return mExpandedNotifications.contains(groupKey);
     }
 
     private int findIndexInNotification(String groupKey) {
@@ -272,18 +343,18 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     }
 
     /**
-     * Sets whether distraction optimization is required and update views.
+     * Sets the current {@link CarUxRestrictions}.
      */
-    public void setIsDistractionOptimizationRequired(boolean isDistractionOptimizationRequired) {
-        mIsDistractionOptimizationRequired = isDistractionOptimizationRequired;
+    public void setCarUxRestrictions(CarUxRestrictions carUxRestrictions) {
+        mCarUxRestrictions = carUxRestrictions;
         notifyDataSetChanged();
     }
 
     /**
-     * Gets whether distraction optimization is required.
+     * Gets the current {@link CarUxRestrictions}.
      */
-    public boolean getIsDistractionOptimizationRequired() {
-        return mIsDistractionOptimizationRequired;
+    CarUxRestrictions getCarUxRestrictions() {
+        return mCarUxRestrictions;
     }
 
     /**

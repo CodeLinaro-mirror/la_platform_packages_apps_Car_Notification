@@ -15,12 +15,15 @@
  */
 package com.android.car.notification;
 
+import android.app.KeyguardManager;
 import android.app.Notification;
 import android.app.NotificationManager;
+import android.car.userlib.CarUserManagerHelper;
 import android.content.Context;
 import android.graphics.PixelFormat;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.RemoteException;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.view.Gravity;
@@ -36,25 +39,41 @@ import android.widget.FrameLayout;
 public class CarHeadsUpNotificationManager {
     private static CarHeadsUpNotificationManager sManager;
     private final Context mContext;
+    private final boolean mEnableMediaNotification;
+    private final boolean mEnableOngoingNotification;
+    private final long mDuration;
+    private final long mEnterAnimationDuration;
+    private final int mScrimHeightBelowNotification;
+    private final CarUserManagerHelper mCarUserManagerHelper;
+    private final KeyguardManager mKeyguardManager;
+    private final PreprocessingManager mPreprocessingManager;
+    private final NotificationManager mNotificationManager;
     private final WindowManager mWindowManager;
     private final LayoutInflater mInflater;
     private final Handler mTimer;
     private final View mScrimView;
     private final FrameLayout mWrapper;
-    private final long mDuration;
-    private final long mEnterAnimationDuration;
-    private final int mScrimHeightBelowNotification;
+    private StatusBarNotification mVisibleNotification;
 
     private CarHeadsUpNotificationManager(Context context) {
         mContext = context.getApplicationContext();
-        mWindowManager =
-                (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
-        mInflater = LayoutInflater.from(mContext);
+        mEnableMediaNotification =
+                context.getResources().getBoolean(R.bool.config_showMediaNotification);
+        mEnableOngoingNotification =
+                context.getResources().getBoolean(R.bool.config_showOngoingNotification);
         mDuration = mContext.getResources().getInteger(R.integer.headsup_notification_duration_ms);
         mEnterAnimationDuration =
                 mContext.getResources().getInteger(R.integer.headsup_enter_duration_ms);
         mScrimHeightBelowNotification = mContext.getResources().getDimensionPixelOffset(
                 R.dimen.headsup_scrim_height_below_notification);
+        mCarUserManagerHelper = new CarUserManagerHelper(context);
+        mKeyguardManager = (KeyguardManager) context.getSystemService(Context.KEYGUARD_SERVICE);
+        mPreprocessingManager = PreprocessingManager.getInstance(context);
+        mNotificationManager =
+                (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+        mWindowManager =
+                (WindowManager) mContext.getSystemService(Context.WINDOW_SERVICE);
+        mInflater = LayoutInflater.from(mContext);
         mTimer = new Handler();
 
         // The reason we are adding the gradient scrim as its own window is because
@@ -74,7 +93,7 @@ public class CarHeadsUpNotificationManager {
         mWindowManager.addView(mScrimView, scrimParams);
 
         WindowManager.LayoutParams wrapperParams = new WindowManager.LayoutParams(
-                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
                 WindowManager.LayoutParams.WRAP_CONTENT,
                 // This type allows covering status bar and receiving touch input
                 WindowManager.LayoutParams.TYPE_SYSTEM_ERROR,
@@ -92,13 +111,12 @@ public class CarHeadsUpNotificationManager {
      * Show the notification as a heads-up if it meets the criteria.
      */
     public void maybeShowHeadsUp(
-            boolean isDistractionOptimizationRequired,
             StatusBarNotification statusBarNotification,
             NotificationListenerService.RankingMap rankingMap) {
         if (!shouldShowHeadsUp(statusBarNotification, rankingMap)) {
             return;
         }
-        showHeadsUp(statusBarNotification);
+        showHeadsUp(mPreprocessingManager.optimizeForDriving(statusBarNotification));
     }
 
     private void showHeadsUp(StatusBarNotification statusBarNotification) {
@@ -109,6 +127,14 @@ public class CarHeadsUpNotificationManager {
         View notificationView;
         @NotificationViewType int viewType = getNotificationViewType(statusBarNotification);
         switch (viewType) {
+            case NotificationViewType.EMERGENCY_HEADSUP: {
+                notificationView = mInflater.inflate(
+                        R.layout.emergency_headsup_notification_template, mWrapper);
+                EmergencyNotificationViewHolder holder =
+                        new EmergencyNotificationViewHolder(notificationView);
+                holder.bind(statusBarNotification);
+                break;
+            }
             case NotificationViewType.MESSAGE_HEADSUP: {
                 notificationView = mInflater.inflate(
                         R.layout.message_headsup_notification_template, mWrapper);
@@ -135,10 +161,12 @@ public class CarHeadsUpNotificationManager {
                 break;
             }
         }
-        // To prevent the default animation from showing
-        // setting the notification view as invisible until the animator actually kicks in
-        // TODO: Remove the default animation
-        notificationView.setVisibility(View.INVISIBLE);
+
+        // Show animations only when a different notification comes in.
+        // i.e. an update of the previous heads-up notification will not have animations.
+        boolean shouldShowAnimation = !CarNotificationDiff.sameNotificationKey(
+                mVisibleNotification, statusBarNotification);
+        mVisibleNotification = statusBarNotification;
 
         // Get the height of the notification view after onLayout()
         // in order to set the height of the scrim view and do animations
@@ -147,33 +175,56 @@ public class CarHeadsUpNotificationManager {
                     @Override
                     public void onGlobalLayout() {
                         int notificationHeight = notificationView.getHeight();
-                        mScrimView.setY(0 - notificationHeight - mScrimHeightBelowNotification);
-                        notificationView.setY(0 - notificationHeight);
-
-                        notificationView.setVisibility(View.VISIBLE);
-                        notificationView.animate()
-                                .y(0f)
-                                .setDuration(mEnterAnimationDuration);
-
                         WindowManager.LayoutParams scrimParams =
                                 (WindowManager.LayoutParams) mScrimView.getLayoutParams();
                         scrimParams.height = notificationHeight + mScrimHeightBelowNotification;
                         mWindowManager.updateViewLayout(mScrimView, scrimParams);
 
-                        mScrimView.setVisibility(View.VISIBLE);
-                        mScrimView.animate()
-                                .y(0f)
-                                .setDuration(mEnterAnimationDuration);
+                        if (shouldShowAnimation) {
+                            mScrimView.setY(0 - notificationHeight - mScrimHeightBelowNotification);
+                            notificationView.setY(0 - notificationHeight);
 
+                            notificationView.animate()
+                                    .y(0f)
+                                    .setDuration(mEnterAnimationDuration);
+
+                            mScrimView.setVisibility(View.VISIBLE);
+                            mScrimView.animate()
+                                    .y(0f)
+                                    .setDuration(mEnterAnimationDuration);
+                        }
                         notificationView.getViewTreeObserver().removeOnGlobalLayoutListener(this);
                     }
                 });
 
         // Remove heads-up notifications after a timer
-        mTimer.postDelayed(() -> {
-            mScrimView.setVisibility(View.GONE);
-            mWrapper.removeAllViews();
-        }, mDuration);
+        mTimer.postDelayed(() -> clearViews(), mDuration);
+
+        // Add swipe gesture
+        notificationView.setOnTouchListener(
+                new HeadsUpNotificationOnTouchListener(notificationView,
+                        () -> {
+                            if (CarNotificationItemTouchHelper.isCancelable(
+                                    statusBarNotification.getNotification())) {
+                                try {
+                                    mNotificationManager.getService().cancelNotificationWithTag(
+                                            statusBarNotification.getPackageName(),
+                                            statusBarNotification.getTag(),
+                                            statusBarNotification.getId(),
+                                            mCarUserManagerHelper.getCurrentForegroundUserId());
+                                } catch (RemoteException e) {
+                                    throw e.rethrowFromSystemServer();
+                                }
+                            }
+                            clearViews();
+                            mTimer.removeCallbacksAndMessages(null);
+                        }));
+    }
+
+    private void clearViews() {
+        mVisibleNotification = null;
+        mScrimView.setVisibility(View.GONE);
+        mWrapper.removeAllViews();
     }
 
     /**
@@ -184,6 +235,9 @@ public class CarHeadsUpNotificationManager {
     @NotificationViewType
     private static int getNotificationViewType(StatusBarNotification statusBarNotification) {
         String category = statusBarNotification.getNotification().category;
+        if (Notification.CATEGORY_CAR_EMERGENCY.equals(category)) {
+            return NotificationViewType.EMERGENCY_HEADSUP;
+        }
         if (Notification.CATEGORY_MESSAGE.equals(category)) {
             return NotificationViewType.MESSAGE_HEADSUP;
         }
@@ -199,24 +253,43 @@ public class CarHeadsUpNotificationManager {
      * Helper method that determines whether a notification should show as a heads-up.
      *
      * <p> A notification will never be shown as a heads-up if:
-     * Is ongoing
+     * <ul>
+     * <li> Keyguard (lock screen) is showing
+     * <li> Is ongoing
+     * </ul>
      *
      * <p> A non-ongoing notification will be shown as a heads-up if:
-     * Importance >= HIGH
-     * or, Category in {CAR_EMERGENCY, CAR_WARNING}
+     * <ul>
+     * <li> Importance >= HIGH
+     * <li> Category in {CAR_EMERGENCY, CAR_WARNING}
+     * </ul>
      *
      * @return true if a notification should be shown as a heads-up
      */
-    private static boolean shouldShowHeadsUp(
+    private boolean shouldShowHeadsUp(
             StatusBarNotification statusBarNotification,
             NotificationListenerService.RankingMap rankingMap) {
-        // Don't show persistent notifications
-        if (statusBarNotification.isOngoing()) {
+
+        if (mKeyguardManager.isKeyguardLocked()) {
             return false;
         }
 
-        // Don't show group summary notification
-        if (statusBarNotification.getNotification().isGroupSummary()) {
+        Notification notification = statusBarNotification.getNotification();
+
+        // Media notification configured by OEM
+        if (!mEnableMediaNotification
+                && Notification.CATEGORY_TRANSPORT.equals(
+                statusBarNotification.getNotification().category)) {
+            return false;
+        }
+
+        // Ongoing notification configured by OEM
+        if (!mEnableOngoingNotification && statusBarNotification.isOngoing()) {
+            return false;
+        }
+
+        // Group alert behavior
+        if (notification.suppressAlertingDueToGrouping()) {
             return false;
         }
 
@@ -229,7 +302,7 @@ public class CarHeadsUpNotificationManager {
         }
 
         // Show if category in {CAR_EMERGENCY, CAR_WARNING}
-        String category = statusBarNotification.getNotification().category;
+        String category = notification.category;
         if (Notification.CATEGORY_CAR_EMERGENCY.equals(category)
                 || Notification.CATEGORY_CAR_WARNING.equals(category)) {
             return true;

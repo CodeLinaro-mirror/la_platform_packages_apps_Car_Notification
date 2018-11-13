@@ -16,12 +16,15 @@
 package com.android.car.notification;
 
 import android.app.Notification;
+import android.car.CarNotConnectedException;
+import android.car.drivingstate.CarUxRestrictions;
+import android.car.drivingstate.CarUxRestrictionsManager;
 import android.content.Context;
-import android.content.pm.ApplicationInfo;
-import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
+import android.text.TextUtils;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
@@ -35,20 +38,33 @@ import java.util.TreeMap;
 /**
  * Manager that groups and ranks the notifications in the notification center.
  */
-class PreprocessingManager {
+public class PreprocessingManager {
+    private static final String TAG = "PreprocessingManager";
+    private static final String SYSTEM_PACKAGE_NAME = "android";
+    private static PreprocessingManager mInstance;
+    private final String mEllipsizedString;
+    private final boolean mEnableMediaNotification;
+    private final boolean mEnableOngoingNotification;
+    private CarUxRestrictionsManager mUxRestrictionsManager;
 
-    private final Context mContext;
-    private final PackageManager mPackageManager;
+    private PreprocessingManager(Context context) {
+        mEllipsizedString = context.getString(R.string.ellipsized_string);
+        mEnableMediaNotification =
+                context.getResources().getBoolean(R.bool.config_showMediaNotification);
+        mEnableOngoingNotification =
+                context.getResources().getBoolean(R.bool.config_showOngoingNotification);
+    }
 
-    PreprocessingManager(Context context) {
-        mContext = context;
-        mPackageManager = context.getPackageManager();
+    public static PreprocessingManager getInstance(Context context) {
+        if (mInstance == null) {
+            mInstance = new PreprocessingManager(context);
+        }
+        return mInstance;
     }
 
     /**
      * Process the given notifications.
      *
-     * @param notifications the notifications to be processed.
      * @param rankingMap    the ranking map for the notifications.
      * @return the processed notifications in a new list.
      */
@@ -56,11 +72,69 @@ class PreprocessingManager {
             @NonNull List<StatusBarNotification> notifications,
             @NonNull NotificationListenerService.RankingMap rankingMap) {
 
-        return new ArrayList<>(rank(summarize(group(notifications)), rankingMap));
+        return new ArrayList<>(
+                rank(group(optimizeForDriving(filter(notifications))), rankingMap));
     }
 
     /**
-     * Step 1: Groups notifications that have the same group key.
+     * Step 1: Process a list of {@link StatusBarNotification}s to be driving optimized.
+     */
+    private List<StatusBarNotification> filter(List<StatusBarNotification> notifications) {
+        if (!mEnableMediaNotification) {
+            notifications.removeIf(
+                    statusBarNotification ->
+                            Notification.CATEGORY_TRANSPORT.equals(
+                                    statusBarNotification.getNotification().category));
+        }
+        if (!mEnableOngoingNotification) {
+            notifications.removeIf(statusBarNotification -> statusBarNotification.isOngoing());
+        }
+        return notifications;
+    }
+
+    /**
+     * Step 1: Process a list of {@link StatusBarNotification}s to be driving optimized.
+     * Note that the string length limit is always respected regardless of whether distraction
+     * optimization is required.
+     */
+    private List<StatusBarNotification> optimizeForDriving(
+            List<StatusBarNotification> notifications) {
+        notifications.forEach(
+                notification -> notification = optimizeForDriving(notification));
+        return notifications;
+    }
+
+    /**
+     * Helper method that optimize a single {@link StatusBarNotification} for driving.
+     * Currently only trimming texts that have visual effects in car.
+     * Operation is done on the original notification object passed in; no new object is created.
+     */
+    StatusBarNotification optimizeForDriving(StatusBarNotification notification) {
+        CarUxRestrictions carUxRestrictions = getCurrentUxRestrictions();
+        int maxStringLength = carUxRestrictions != null
+                ? carUxRestrictions.getMaxRestrictedStringLength()
+                : Integer.MAX_VALUE;
+        Bundle extras = notification.getNotification().extras;
+        for (String key : extras.keySet()) {
+            switch (key) {
+                case Notification.EXTRA_TITLE:
+                case Notification.EXTRA_TEXT:
+                case Notification.EXTRA_TITLE_BIG:
+                case Notification.EXTRA_SUMMARY_TEXT:
+                    CharSequence value = extras.getCharSequence(key);
+                    if (!TextUtils.isEmpty(value) && value.length() > maxStringLength) {
+                        extras.putString(key, value.toString()
+                                .substring(0, maxStringLength).concat(mEllipsizedString));
+                    }
+                default:
+                    continue;
+            }
+        }
+        return notification;
+    }
+
+    /**
+     * Step 2: Group notifications that have the same group key.
      * Never groups system notifications nor car emergency notifications.
      *
      * @param list list of ungrouped {@link StatusBarNotification}s.
@@ -74,21 +148,15 @@ class PreprocessingManager {
             Notification notification = statusBarNotification.getNotification();
 
             String groupKey = getGroupKey(statusBarNotification);
-            if (groupedNotifications.containsKey(groupKey)) {
-                if (notification.isGroupSummary()) {
-                    groupedNotifications
-                            .get(groupKey).setGroupHeaderNotification(statusBarNotification);
-                } else {
-                    groupedNotifications.get(groupKey).addNotification(statusBarNotification);
-                }
-            } else {
+            if (!groupedNotifications.containsKey(groupKey)) {
                 NotificationGroup notificationGroup = new NotificationGroup();
                 groupedNotifications.put(groupKey, notificationGroup);
-                if (notification.isGroupSummary()) {
-                    notificationGroup.setGroupHeaderNotification(statusBarNotification);
-                } else {
-                    notificationGroup.addNotification(statusBarNotification);
-                }
+            }
+            if (notification.isGroupSummary()) {
+                groupedNotifications.get(groupKey)
+                        .setGroupHeaderNotification(statusBarNotification);
+            } else {
+                groupedNotifications.get(groupKey).addNotification(statusBarNotification);
             }
         }
 
@@ -98,46 +166,7 @@ class PreprocessingManager {
     }
 
     /**
-     * Step 2: Add summary texts to system generated group header notifications.
-     *
-     * @param list list of {@link NotificationGroup}s.
-     * @return list of {@link NotificationGroup}s with summary texts populated for group
-     * headers. Operation is done on the list passed in; no new list is generated.
-     */
-    private List<NotificationGroup> summarize(List<NotificationGroup> list) {
-
-        list.forEach(notificationGroup -> {
-            if (notificationGroup.isGroup()) {
-
-                StatusBarNotification headerNotification =
-                        notificationGroup.getGroupHeaderNotification();
-
-                if (headerNotification.getOverrideGroupKey() != null) {
-                    // Add texts to a automatically generated group summary notification
-                    Bundle extras = headerNotification.getNotification().extras;
-                    if (!extras.containsKey(Notification.EXTRA_TITLE_BIG)
-                            && extras.containsKey(Notification.EXTRA_BUILDER_APPLICATION_INFO)) {
-                        ApplicationInfo appInfo =
-                                extras.getParcelable(Notification.EXTRA_BUILDER_APPLICATION_INFO);
-                        extras.putString(
-                                Notification.EXTRA_TITLE_BIG,
-                                appInfo.loadLabel(mPackageManager).toString());
-                    }
-                    if (!extras.containsKey(Notification.EXTRA_SUMMARY_TEXT)) {
-                        String summaryString = mContext.getResources().getQuantityString(
-                                R.plurals.group_notification_summary_text,
-                                notificationGroup.getChildCount(),
-                                notificationGroup.getChildCount());
-                        extras.putString(Notification.EXTRA_SUMMARY_TEXT, summaryString);
-                    }
-                }
-            }
-        });
-        return list;
-    }
-
-    /**
-     * Step 3: Rank notifications according to the ranking key supplied by the notification
+     * Step 3: Rank notifications according to the ranking key supplied by the notification.
      */
     private static List<NotificationGroup> rank(
             List<NotificationGroup> notifications,
@@ -145,6 +174,23 @@ class PreprocessingManager {
 
         Collections.sort(notifications, new NotificationComparator(rankingMap));
         return notifications;
+    }
+
+    public void setCarUxRestrictionsManager(CarUxRestrictionsManager manager) {
+        mUxRestrictionsManager = manager;
+    }
+
+    private CarUxRestrictions getCurrentUxRestrictions() {
+        if (mUxRestrictionsManager == null) {
+            return null;
+        }
+
+        try {
+            return mUxRestrictionsManager.getCurrentCarUxRestrictions();
+        } catch (CarNotConnectedException e) {
+            Log.e(TAG, "Failed to get UxRestrictions thus running unrestricted", e);
+            return null;
+        }
     }
 
     private static class NotificationComparator implements Comparator<NotificationGroup> {
@@ -173,7 +219,12 @@ class PreprocessingManager {
      */
     static String getGroupKey(StatusBarNotification statusBarNotification) {
         String groupKey = statusBarNotification.getGroup();
-        if (groupKey == null) {
+        String category = statusBarNotification.getNotification().category;
+        boolean isEmergency = Notification.CATEGORY_CAR_EMERGENCY.equals(category);
+        boolean isMedia = Notification.CATEGORY_TRANSPORT.equals(category);
+        boolean isSystem = SYSTEM_PACKAGE_NAME.equals(statusBarNotification.getPackageName());
+
+        if (groupKey == null || isEmergency || isMedia || isSystem) {
             // If a notification is not part of a group, use a unique identifier as the group key
             groupKey = statusBarNotification.getKey();
         } else {
