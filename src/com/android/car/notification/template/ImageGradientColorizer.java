@@ -14,7 +14,7 @@
  * limitations under the License
  */
 
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
