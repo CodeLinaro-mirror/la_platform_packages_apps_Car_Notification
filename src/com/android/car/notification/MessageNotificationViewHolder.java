@@ -27,8 +27,6 @@ import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.widget.ImageView;
-import android.widget.TextView;
 
 import androidx.recyclerview.widget.RecyclerView;
 
@@ -41,21 +39,17 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
     private static final String TAG = "car_notification_messaging";
     private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
+    private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
     private final View mParentView;
-    private final TextView mSenderNameView;
-    private final TextView mTitleTextView;
-    private final ImageView mAvatarView;
 
     public MessageNotificationViewHolder(View view) {
         super(view);
         mContext = view.getContext();
         mParentView = view;
         mHeaderView = view.findViewById(R.id.notification_header);
+        mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
-        mSenderNameView = view.findViewById(R.id.sender_name);
-        mTitleTextView = view.findViewById(R.id.conversation_title);
-        mAvatarView = view.findViewById(R.id.sender_avatar);
     }
 
     /**
@@ -63,8 +57,14 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
      *
      * @param statusBarNotification passing {@code null} clears the view.
      * @param isInGroup whether this notification card is part of a group.
+     * @param isRestricted whether this notification should show only a summary of the notification
+     *                     (e.g. "1 new message") or the actual content of the message.
      */
-    public void bind(@Nullable StatusBarNotification statusBarNotification, boolean isInGroup) {
+    public void bind(
+            @Nullable StatusBarNotification statusBarNotification,
+            boolean isInGroup,
+            boolean isRestricted) {
+
         reset();
         if (statusBarNotification == null) {
             return;
@@ -87,6 +87,7 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
         CharSequence messageText = null;
         CharSequence senderName = null;
         Icon avatar = null;
+        Integer messageCount = null;
 
         Bundle extras = notification.extras;
         Parcelable[] messagesData = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
@@ -94,6 +95,7 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
             List<Notification.MessagingStyle.Message> messages =
                     Notification.MessagingStyle.Message.getMessagesFromBundleArray(messagesData);
             if (messages != null && !messages.isEmpty()) {
+                messageCount = messages.size();
                 // Use the latest message
                 Notification.MessagingStyle.Message message = messages.get(messages.size() - 1);
                 messageText = message.getText();
@@ -106,28 +108,31 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
                 }
             }
         }
+
         // app did not use messaging style, fall back to standard fields
+        if (messageCount == null) {
+            messageCount = notification.number;
+            if (messageCount == 0) {
+                messageCount = 1; // a notification should at least represent 1 message
+            }
+        }
+
         if (TextUtils.isEmpty(senderName)) {
             senderName = extras.getCharSequence(Notification.EXTRA_TITLE);
         }
-        if (TextUtils.isEmpty(messageText)) {
+
+        if (isRestricted) {
+            messageText = mContext.getResources().getQuantityString(
+                    R.plurals.restricted_message_text, messageCount, messageCount);
+        } else if (TextUtils.isEmpty(messageText)) {
             messageText = extras.getCharSequence(Notification.EXTRA_TEXT);
         }
+
         if (avatar == null) {
             avatar = notification.getLargeIcon();
         }
 
-        if (!TextUtils.isEmpty(messageText)) {
-            mTitleTextView.setVisibility(View.VISIBLE);
-            mTitleTextView.setText(messageText);
-        }
-        if (!TextUtils.isEmpty(senderName)) {
-            mSenderNameView.setVisibility(View.VISIBLE);
-            mSenderNameView.setText(senderName);
-        }
-        if (avatar != null) {
-            mAvatarView.setImageIcon(avatar);
-        }
+        mBodyView.bind(senderName, messageText, avatar);
     }
 
     /**
@@ -136,17 +141,5 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
     private void reset() {
         mParentView.setClickable(false);
         mParentView.setOnClickListener(null);
-
-        mHeaderView.reset();
-
-        mActionsView.reset();
-
-        mSenderNameView.setVisibility(View.GONE);
-        mSenderNameView.setText(null);
-
-        mAvatarView.setImageDrawable(mContext.getResources().getDrawable(R.drawable.ic_person));
-
-        mTitleTextView.setVisibility(View.GONE);
-        mTitleTextView.setText(null);
     }
 }
