@@ -13,56 +13,63 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.app.Notification;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.View;
-import android.widget.ProgressBar;
+import android.widget.FrameLayout;
 
-import androidx.recyclerview.widget.RecyclerView;
-
+import com.android.car.notification.R;
 /**
- * Basic notification view template that displays a progress bar notification.
- * This template is only used in notification center and never as a heads-up notification.
+ * Basic notification view template that displays a minimal notification.
  */
-public class ProgressNotificationViewHolder extends RecyclerView.ViewHolder {
+public class BasicNotificationViewHolder extends CarNotificationBaseViewHolder {
+
     private static final String TAG = "car_notification_basic";
+
+    private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
-    private final ProgressBar mProgressBarView;
-    private final View mParentView;
+    private final FrameLayout mBigContentView;
 
-    public ProgressNotificationViewHolder(View view) {
+    private StatusBarNotification mStatusBarNotification;
+
+    public BasicNotificationViewHolder(View view) {
         super(view);
-        mParentView = view;
+        mContext = view.getContext();
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
-        mProgressBarView = view.findViewById(R.id.progress_bar);
+        mBigContentView = view.findViewById(R.id.big_content_view);
     }
 
     /**
-     * Binds a {@link StatusBarNotification} to a car progress notification template.
-     *
-     * @param statusBarNotification passing {@code null} clears the view.
-     * @param isInGroup whether this notification card is part of a group.
+     * Binds a {@link StatusBarNotification} to a basic car notification template.
      */
+    @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
-        if (statusBarNotification == null) {
-            return;
-        }
+        bindBody(statusBarNotification);
+        mHeaderView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(statusBarNotification, isInGroup);
+    }
 
+    /**
+     * Private method that binds the data to the view.
+     */
+    private void bindBody(StatusBarNotification statusBarNotification) {
+        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
 
         if (notification.contentIntent != null) {
-            mParentView.setOnClickListener(v -> {
+            itemView.setOnClickListener(v -> {
                 try {
                     notification.contentIntent.send();
                 } catch (PendingIntent.CanceledException e) {
@@ -71,33 +78,39 @@ public class ProgressNotificationViewHolder extends RecyclerView.ViewHolder {
             });
         }
 
-        mHeaderView.bind(statusBarNotification, /* primaryColor= */ null);
-        mActionsView.bind(statusBarNotification, isInGroup);
+        if (notification.bigContentView != null) {
+            View view = notification.bigContentView.apply(mContext, /* parent= */ mBigContentView);
+            mBigContentView.setVisibility(View.VISIBLE);
+            mBigContentView.addView(view);
+            mHeaderView.setVisibility(View.GONE);
+            mBodyView.setVisibility(View.GONE);
+            mActionsView.setVisibility(View.GONE);
+            // If a notification came with a custom content view,
+            // do not bind anything else other than the custom view.
+            return;
+        }
+
 
         Bundle extraData = notification.extras;
+
         CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence text = extraData.getCharSequence(Notification.EXTRA_TEXT);
         Icon icon = notification.getLargeIcon();
         mBodyView.bind(title, text, icon);
+    }
 
-        mProgressBarView.setVisibility(View.VISIBLE);
-        boolean isIndeterminate = extraData.getBoolean(
-                Notification.EXTRA_PROGRESS_INDETERMINATE);
-        int progress = extraData.getInt(Notification.EXTRA_PROGRESS);
-        int progressMax = extraData.getInt(Notification.EXTRA_PROGRESS_MAX);
-        mProgressBarView.setIndeterminate(isIndeterminate);
-        mProgressBarView.setMax(progressMax);
-        mProgressBarView.setProgress(progress);
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mStatusBarNotification;
     }
 
     /**
      * Resets the basic notification view empty for recycling.
      */
-    private void reset() {
-        mParentView.setClickable(false);
-        mParentView.setOnClickListener(null);
-
-        mProgressBarView.setProgress(0);
-        mProgressBarView.setVisibility(View.GONE);
+    @Override
+    void reset() {
+        super.reset();
+        mBigContentView.removeAllViews();
+        mBigContentView.setVisibility(View.GONE);
     }
 }

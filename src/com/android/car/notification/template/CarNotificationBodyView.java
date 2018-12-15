@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.annotation.ColorInt;
 import android.annotation.Nullable;
@@ -26,6 +26,9 @@ import android.view.View;
 import android.widget.ImageButton;
 import android.widget.RelativeLayout;
 import android.widget.TextView;
+
+import com.android.car.notification.R;
+import com.android.car.theme.Themes;
 
 /**
  * Common notification body that consists of a title line, a content text line, and an image icon on
@@ -43,12 +46,6 @@ public class CarNotificationBodyView extends RelativeLayout {
     private TextView mContentView;
     private ImageButton mIconView;
 
-    {
-        mDefaultPrimaryTextColor = getContext().getColor(R.color.default_primary_text_color);
-        mDefaultSecondaryTextColor = getContext().getColor(R.color.default_secondary_text_color);
-        inflate(getContext(), R.layout.car_notification_body_view, /* root= */ this);
-    }
-
     public CarNotificationBodyView(Context context) {
         super(context);
     }
@@ -64,6 +61,14 @@ public class CarNotificationBodyView extends RelativeLayout {
     public CarNotificationBodyView(
             Context context, AttributeSet attrs, int defStyleAttr, int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+    }
+
+    {
+        mDefaultPrimaryTextColor =
+                Themes.getAttrColor(getContext(), android.R.attr.textColorPrimary);
+        mDefaultSecondaryTextColor =
+                Themes.getAttrColor(getContext(), android.R.attr.textColorSecondary);
+        inflate(getContext(), R.layout.car_notification_body_view, /* root= */ this);
     }
 
     @Override

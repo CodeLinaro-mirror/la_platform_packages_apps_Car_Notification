@@ -13,8 +13,9 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
+import android.annotation.ColorInt;
 import android.annotation.Nullable;
 import android.app.Notification;
 import android.content.Context;
@@ -32,6 +33,9 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import com.android.car.notification.R;
+import com.android.car.theme.Themes;
+
 /**
  * Notification header view that contains the issuer app icon and name, and extra information.
  */
@@ -41,17 +45,11 @@ public class CarNotificationHeaderView extends LinearLayout {
 
     private final PackageManager mPackageManager;
     private final int mDefaultTextColor;
+    private final int mCardBackgroundColor;
     private final String mSeparatorText;
 
     private ImageView mIconView;
     private TextView mHeaderTextView;
-
-    {
-        mPackageManager = getContext().getPackageManager();
-        mDefaultTextColor = getContext().getColor(R.color.header_text_color);
-        mSeparatorText = getContext().getString(R.string.header_text_separator);
-        inflate(getContext(), R.layout.car_notification_header_view, this);
-    }
 
     public CarNotificationHeaderView(Context context) {
         super(context);
@@ -70,6 +68,14 @@ public class CarNotificationHeaderView extends LinearLayout {
         super(context, attrs, defStyleAttr, defStyleRes);
     }
 
+    {
+        mPackageManager = getContext().getPackageManager();
+        mCardBackgroundColor = Themes.getAttrColor(getContext(), android.R.attr.colorPrimary);
+        mDefaultTextColor = Themes.getAttrColor(getContext(), android.R.attr.textColorPrimary);
+        mSeparatorText = getContext().getString(R.string.header_text_separator);
+        inflate(getContext(), R.layout.car_notification_header_view, this);
+    }
+
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
@@ -81,12 +87,17 @@ public class CarNotificationHeaderView extends LinearLayout {
      * Binds the notification header that contains the issuer app icon and name.
      *
      * @param statusBarNotification the notification to be bound.
-     * @param primaryColor          the foreground color used for the small icon.
-     *                              Passing {@code null} will use the default colors.
+     * @param isInGroup whether this notification is part of a grouped notification.
      */
-    public void bind(StatusBarNotification statusBarNotification, @Nullable Integer primaryColor) {
+    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
-        setVisibility(View.VISIBLE);
+
+        if (isInGroup) {
+            // if the notification is part of a group, individual headers are not shown
+            // instead, there is a header for the entire group in the group notification template
+            return;
+        }
+
         Notification notification = statusBarNotification.getNotification();
         Context packageContext = statusBarNotification.getPackageContext(getContext());
 
@@ -127,21 +138,34 @@ public class CarNotificationHeaderView extends LinearLayout {
             stringBuilder.append(dateString);
         }
 
-        // optional color
-        if (primaryColor != null) {
-            mIconView.setColorFilter(primaryColor);
-            mHeaderTextView.setTextColor(primaryColor);
-        }
-
         mHeaderTextView.setText(stringBuilder);
+
+        // optional color
+        if (notification.color != Notification.COLOR_DEFAULT) {
+            int calculatedColor = NotificationColorUtil.resolveContrastColor(
+                    notification.color, mCardBackgroundColor);
+            mIconView.setColorFilter(calculatedColor);
+        }
     }
 
     /**
-     * Resets the notification header empty for recycling.
+     * Binds the notification header that contains the issuer app icon and name.
+     *
+     * @param statusBarNotification the notification to be bound.
+     * @param mediaForegroundColor  the foreground color used for the texts and icons of media
+     *                              notifications.
+     */
+    public void bindWithMediaColor(
+            StatusBarNotification statusBarNotification, @ColorInt int mediaForegroundColor) {
+        bind(statusBarNotification, false);
+        mIconView.setColorFilter(mediaForegroundColor);
+        mHeaderTextView.setTextColor(mediaForegroundColor);
+    }
+
+    /**
+     * Resets the notification header empty.
      */
     private void reset() {
-        setVisibility(View.GONE);
-
         mIconView.setVisibility(View.GONE);
         mIconView.setImageDrawable(null);
         mIconView.setColorFilter(mDefaultTextColor);
