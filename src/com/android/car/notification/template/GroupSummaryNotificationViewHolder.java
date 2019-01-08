@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.app.Notification;
 import android.app.PendingIntent;
@@ -24,21 +24,23 @@ import android.util.Log;
 import android.view.View;
 import android.widget.TextView;
 
-import androidx.recyclerview.widget.RecyclerView;
+import com.android.car.notification.NotificationGroup;
+import com.android.car.notification.R;
 
 import java.util.List;
 
 /**
- * Group summary notification view template that displays an automatically generated group header.
+ * Group summary notification view template that displays an automatically generated
+ * group summary notification.
  */
-public class GroupSummaryNotificationViewHolder extends RecyclerView.ViewHolder {
+public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewHolder {
     private static final String TAG = "car_notif_group_summary";
-    private final CarNotificationHeaderView mHeaderView;
     private final TextView mTitle1View;
     private final TextView mTitle2View;
     private final TextView mUnshownCountView;
     private final View mParentView;
     private final Context mContext;
+    private StatusBarNotification mStatusBarNotification;
 
     /**
      * Constructor of the GroupSummaryNotificationViewHolder with a group summary template view.
@@ -49,7 +51,6 @@ public class GroupSummaryNotificationViewHolder extends RecyclerView.ViewHolder 
         super(view);
         mParentView = view;
         mContext = view.getContext();
-        mHeaderView = view.findViewById(R.id.notification_header);
         mTitle1View = view.findViewById(R.id.child_notification_title_1);
         mTitle2View = view.findViewById(R.id.child_notification_title_2);
         mUnshownCountView = view.findViewById(R.id.unshown_count);
@@ -61,8 +62,8 @@ public class GroupSummaryNotificationViewHolder extends RecyclerView.ViewHolder 
     public void bind(NotificationGroup notificationGroup) {
         reset();
 
-        StatusBarNotification statusBarNotification = notificationGroup.getSingleNotification();
-        Notification notification = statusBarNotification.getNotification();
+        mStatusBarNotification = notificationGroup.getSingleNotification();
+        Notification notification = mStatusBarNotification.getNotification();
 
         if (notification.contentIntent != null) {
             mParentView.setOnClickListener(v -> {
@@ -73,8 +74,6 @@ public class GroupSummaryNotificationViewHolder extends RecyclerView.ViewHolder 
                 }
             });
         }
-
-        mHeaderView.bind(statusBarNotification, /* primaryColor= */ null);
 
         List<String> titles = notificationGroup.getChildTitles();
         if (titles != null && !titles.isEmpty()) {
@@ -98,7 +97,10 @@ public class GroupSummaryNotificationViewHolder extends RecyclerView.ViewHolder 
     /**
      * Resets the notification view empty for recycling.
      */
-    private void reset() {
+    @Override
+    void reset() {
+        super.reset();
+
         mParentView.setClickable(false);
         mParentView.setOnClickListener(null);
 
@@ -111,4 +113,20 @@ public class GroupSummaryNotificationViewHolder extends RecyclerView.ViewHolder 
         mUnshownCountView.setText(null);
         mUnshownCountView.setVisibility(View.GONE);
     }
+
+    /**
+     * Group summary notification view holder is special in that it binds a
+     * {@link NotificationGroup} instead of a {@link StatusBarNotification},
+     * therefore the standard bind() method is no used. Still implementing
+     * {@link CarNotificationBaseViewHolder} because the touch events/animations need to work.
+     */
+    @Override
+    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
+    }
+
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mStatusBarNotification;
+    }
+
 }
