@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.app.Notification;
 import android.app.PendingIntent;
@@ -24,6 +24,9 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.RelativeLayout;
+
+import com.android.car.notification.R;
+import com.android.car.theme.Themes;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,17 +41,10 @@ public class CarNotificationActionsView extends RelativeLayout {
     // https://developer.android.com/reference/android/app/Notification.Builder.html#addAction
     private static final int MAX_NUM_ACTIONS = 3;
 
-    private final int mCarActionBarColor;
-    private final int mCarCardColor;
+    private final int mCardBackgroundColor;
+    private final int mDefaultTextColor;
 
     private final List<Button> mActionButtons = new ArrayList<>();
-    private View mActionsView;
-
-    {
-        mCarActionBarColor = getContext().getResources().getColor(R.color.action_bar_color);
-        mCarCardColor = getContext().getResources().getColor(R.color.car_card);
-        inflate(getContext(), R.layout.car_notification_actions_view, /* root= */ this);
-    }
 
     public CarNotificationActionsView(Context context) {
         super(context);
@@ -67,10 +63,15 @@ public class CarNotificationActionsView extends RelativeLayout {
         super(context, attrs, defStyleAttr, defStyleRes);
     }
 
+    {
+        mCardBackgroundColor = Themes.getAttrColor(getContext(), android.R.attr.colorPrimary);
+        mDefaultTextColor = Themes.getAttrColor(getContext(), android.R.attr.textColorPrimary);
+        inflate(getContext(), R.layout.car_notification_actions_view, /* root= */ this);
+    }
+
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
-        mActionsView = findViewById(R.id.notification_actions);
         mActionButtons.add(findViewById(R.id.action_1));
         mActionButtons.add(findViewById(R.id.action_2));
         mActionButtons.add(findViewById(R.id.action_3));
@@ -80,7 +81,7 @@ public class CarNotificationActionsView extends RelativeLayout {
      * Binds the notification action buttons.
      *
      * @param statusBarNotification the notification that contains the actions.
-     * @param isInGroup whether this notification card is part of a group.
+     * @param isInGroup whether the notification is part of a grouped notification.
      */
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
@@ -91,9 +92,6 @@ public class CarNotificationActionsView extends RelativeLayout {
             return;
         }
 
-        setVisibility(View.VISIBLE);
-        mActionsView.setBackgroundColor(isInGroup ? mCarCardColor : mCarActionBarColor);
-
         int length = Math.min(actions.length, MAX_NUM_ACTIONS);
         for (int i = 0; i < length; i++) {
             Notification.Action action = actions[i];
@@ -101,6 +99,11 @@ public class CarNotificationActionsView extends RelativeLayout {
             button.setVisibility(View.VISIBLE);
             // clear spannables and only use the text
             button.setText(action.title.toString());
+            if (notification.color != Notification.COLOR_DEFAULT) {
+                int calculatedColor = NotificationColorUtil.resolveContrastColor(
+                        notification.color, mCardBackgroundColor);
+                button.setTextColor(calculatedColor);
+            }
 
             if (action.actionIntent != null) {
                 button.setOnClickListener(v -> {
@@ -118,11 +121,10 @@ public class CarNotificationActionsView extends RelativeLayout {
      * Resets the notification actions empty for recycling.
      */
     private void reset() {
-        setVisibility(View.GONE);
-        mActionsView.setBackgroundColor(mCarActionBarColor);
         for (Button button : mActionButtons) {
             button.setVisibility(View.GONE);
             button.setText(null);
+            button.setTextColor(mDefaultTextColor);
             button.setCompoundDrawables(null, null, null, null);
             button.setOnClickListener(null);
         }

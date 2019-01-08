@@ -15,5 +15,6 @@
     limitations under the License.
 -->
 <resources>
-    <color name="background_color">@color/car_grey_1000</color>
+    <style name="Theme.DeviceDefault.NoActionBar.Notification" parent="@android:Theme.DeviceDefault.NoActionBar">
+    </style>
 </resources>

@@ -13,54 +13,53 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.app.Notification;
 import android.app.PendingIntent;
-import android.content.Context;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.View;
-import android.widget.FrameLayout;
 
-import androidx.recyclerview.widget.RecyclerView;
-
+import com.android.car.notification.R;
 /**
- * Basic notification view template that displays a minimal notification.
+ * Inbox notification view template that
+ * displays a {@link android.app.Notification.InboxStyle} notification.
  */
-public class BasicNotificationViewHolder extends RecyclerView.ViewHolder {
-    private static final String TAG = "car_notification_basic";
-    private final Context mContext;
+public class InboxNotificationViewHolder extends CarNotificationBaseViewHolder {
+    private static final String TAG = "car_notification_inbox";
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
     private final View mParentView;
-    private final FrameLayout mBigContentView;
+    private StatusBarNotification mStatusBarNotification;
 
-    public BasicNotificationViewHolder(View view) {
+    public InboxNotificationViewHolder(View view) {
         super(view);
-        mContext = view.getContext();
         mParentView = view;
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
-        mBigContentView = view.findViewById(R.id.big_content_view);
     }
 
     /**
-     * Binds a {@link StatusBarNotification} to a basic car notification template.
-     *
-     * @param statusBarNotification passing {@code null} clears the view.
-     * @param isInGroup whether this notification card is part of a group.
+     * Binds a {@link StatusBarNotification} to an inbox style car notification template.
      */
+    @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
-        if (statusBarNotification == null) {
-            return;
-        }
+        bindBody(statusBarNotification);
+        mHeaderView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(statusBarNotification, isInGroup);
+    }
 
+    /**
+     * Private method that binds the data to the view.
+     */
+    private void bindBody(StatusBarNotification statusBarNotification) {
+        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
 
         if (notification.contentIntent != null) {
@@ -73,37 +72,26 @@ public class BasicNotificationViewHolder extends RecyclerView.ViewHolder {
             });
         }
 
-        if (notification.bigContentView != null) {
-            View view = notification.bigContentView.apply(mContext, /* parent= */ mBigContentView);
-            mBigContentView.setVisibility(View.VISIBLE);
-            mBigContentView.addView(view);
-            mHeaderView.setVisibility(View.GONE);
-            mBodyView.setVisibility(View.GONE);
-            mActionsView.setVisibility(View.GONE);
-            // If a notification came with a custom content view,
-            // do not bind anything else other than the custom view.
-            return;
-        }
-
-        mHeaderView.bind(statusBarNotification, /* primaryColor= */ null);
-        mActionsView.bind(statusBarNotification, isInGroup);
-
         Bundle extraData = notification.extras;
-
-        CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE);
-        CharSequence text = extraData.getCharSequence(Notification.EXTRA_TEXT);
+        CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE_BIG);
+        CharSequence text = extraData.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
         Icon icon = notification.getLargeIcon();
         mBodyView.bind(title, text, icon);
     }
 
     /**
-     * Resets the basic notification view empty for recycling.
+     * Resets the inbox notification view empty for recycling.
      */
-    private void reset() {
+    @Override
+    void reset() {
+        super.reset();
         mParentView.setClickable(false);
         mParentView.setOnClickListener(null);
-
-        mBigContentView.removeAllViews();
-        mBigContentView.setVisibility(View.GONE);
     }
+
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mStatusBarNotification;
+    }
+
 }

@@ -13,52 +13,56 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.app.Notification;
 import android.app.PendingIntent;
-import android.content.Context;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.View;
+import android.widget.ProgressBar;
 
-import androidx.recyclerview.widget.RecyclerView;
-
+import com.android.car.notification.R;
 /**
- * Notification view template that displays a car emergency notification.
+ * Basic notification view template that displays a progress bar notification.
+ * This template is only used in notification center and never as a heads-up notification.
  */
-public class EmergencyNotificationViewHolder extends RecyclerView.ViewHolder {
-    private static final String TAG = "car_emergency";
-    private final Context mContext;
+public class ProgressNotificationViewHolder extends CarNotificationBaseViewHolder {
+    private static final String TAG = "car_notification_basic";
     private final CarNotificationHeaderView mHeaderView;
-    private final CarNotificationActionsView mActionsView;
     private final CarNotificationBodyView mBodyView;
+    private final CarNotificationActionsView mActionsView;
+    private final ProgressBar mProgressBarView;
     private final View mParentView;
-    private final int mEmergencyActionBarColor;
+    private StatusBarNotification mStatusBarNotification;
 
-    public EmergencyNotificationViewHolder(View view) {
+    public ProgressNotificationViewHolder(View view) {
         super(view);
-        mContext = view.getContext();
         mParentView = view;
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
-        mEmergencyActionBarColor = mContext.getColor(R.color.emergency_action_bar_background_color);
+        mProgressBarView = view.findViewById(R.id.progress_bar);
     }
 
     /**
-     * Binds a {@link StatusBarNotification} to a car emergency notification template.
-     *
-     * @param statusBarNotification passing {@code null} clears the view.
+     * Binds a {@link StatusBarNotification} to a car progress notification template.
      */
-    public void bind(StatusBarNotification statusBarNotification) {
+    @Override
+    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
-        if (statusBarNotification == null) {
-            return;
-        }
+        bindBody(statusBarNotification);
+        mHeaderView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(statusBarNotification, isInGroup);
+    }
 
+    /**
+     * Private method that binds the data to the view.
+     */
+    private void bindBody(StatusBarNotification statusBarNotification) {
+        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
 
         if (notification.contentIntent != null) {
@@ -71,24 +75,39 @@ public class EmergencyNotificationViewHolder extends RecyclerView.ViewHolder {
             });
         }
 
-        mHeaderView.bind(statusBarNotification, /* primaryColor= */ null);
-        mActionsView.bind(statusBarNotification, /* isInGroup= */ false);
-
-        // Override the car action bar color that was set in CarNotificationActionsView.bind()
-        mActionsView.setBackgroundColor(mEmergencyActionBarColor);
-
         Bundle extraData = notification.extras;
         CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE);
         CharSequence text = extraData.getCharSequence(Notification.EXTRA_TEXT);
         Icon icon = notification.getLargeIcon();
         mBodyView.bind(title, text, icon);
+
+        mProgressBarView.setVisibility(View.VISIBLE);
+        boolean isIndeterminate = extraData.getBoolean(
+                Notification.EXTRA_PROGRESS_INDETERMINATE);
+        int progress = extraData.getInt(Notification.EXTRA_PROGRESS);
+        int progressMax = extraData.getInt(Notification.EXTRA_PROGRESS_MAX);
+        mProgressBarView.setIndeterminate(isIndeterminate);
+        mProgressBarView.setMax(progressMax);
+        mProgressBarView.setProgress(progress);
     }
 
     /**
      * Resets the basic notification view empty for recycling.
      */
-    private void reset() {
+    @Override
+    void reset() {
+        super.reset();
+
         mParentView.setClickable(false);
         mParentView.setOnClickListener(null);
+
+        mProgressBarView.setProgress(0);
+        mProgressBarView.setVisibility(View.GONE);
     }
+
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mStatusBarNotification;
+    }
+
 }

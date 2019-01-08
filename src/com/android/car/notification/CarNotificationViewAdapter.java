@@ -28,6 +28,15 @@ import android.view.ViewGroup;
 import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.android.car.notification.template.BasicNotificationViewHolder;
+import com.android.car.notification.template.EmergencyNotificationViewHolder;
+import com.android.car.notification.template.GroupNotificationViewHolder;
+import com.android.car.notification.template.GroupSummaryNotificationViewHolder;
+import com.android.car.notification.template.InboxNotificationViewHolder;
+import com.android.car.notification.template.MediaNotificationViewHolder;
+import com.android.car.notification.template.MessageNotificationViewHolder;
+import com.android.car.notification.template.ProgressNotificationViewHolder;
+
 import java.util.ArrayList;
 import java.util.List;
 
@@ -79,10 +88,31 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                         .inflate(R.layout.group_summary_notification_template, parent, false);
                 viewHolder = new GroupSummaryNotificationViewHolder(view);
                 break;
-            case NotificationViewType.EMERGENCY:
+            case NotificationViewType.CAR_EMERGENCY:
                 view = mInflater.inflate(
-                        R.layout.emergency_notification_template, parent, false);
+                        R.layout.car_emergency_notification_template, parent, false);
                 viewHolder = new EmergencyNotificationViewHolder(view);
+                break;
+            case NotificationViewType.CAR_WARNING:
+                view = mInflater.inflate(
+                        R.layout.car_warning_notification_template, parent, false);
+                // Using the basic view holder because they share the same view binding logic
+                // OEMs should create view holders if needed
+                viewHolder = new BasicNotificationViewHolder(view);
+                break;
+            case NotificationViewType.CAR_INFORMATION:
+                view = mInflater.inflate(
+                        R.layout.car_information_notification_template, parent, false);
+                // Using the basic view holder because they share the same view binding logic
+                // OEMs should create view holders if needed
+                viewHolder = new BasicNotificationViewHolder(view);
+                break;
+            case NotificationViewType.CAR_INFORMATION_IN_GROUP:
+                view = mInflater.inflate(
+                        R.layout.car_information_notification_template_inner, parent, false);
+                // Using the basic view holder because they share the same view binding logic
+                // OEMs should create view holders if needed
+                viewHolder = new BasicNotificationViewHolder(view);
                 break;
             case NotificationViewType.MESSAGE_IN_GROUP:
                 view = mInflater.inflate(
@@ -138,51 +168,82 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
 
         switch (holder.getItemViewType()) {
             case NotificationViewType.GROUP_EXPANDED:
-                ((GroupNotificationViewHolder) holder).bind(notificationGroup, this, true);
+                ((GroupNotificationViewHolder) holder)
+                        .bind(notificationGroup, this, /* isExpanded= */ true);
                 break;
             case NotificationViewType.GROUP_COLLAPSED:
-                ((GroupNotificationViewHolder) holder).bind(notificationGroup, this, false);
+                ((GroupNotificationViewHolder) holder)
+                        .bind(notificationGroup, this, /* isExpanded= */ false);
                 break;
             case NotificationViewType.GROUP_SUMMARY:
                 ((GroupSummaryNotificationViewHolder) holder).bind(notificationGroup);
                 break;
-            case NotificationViewType.EMERGENCY: {
+            case NotificationViewType.CAR_EMERGENCY: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((EmergencyNotificationViewHolder) holder).bind(notification);
+                ((EmergencyNotificationViewHolder) holder)
+                        .bind(notification, /* isInGroup= */ false);
                 break;
             }
-            case NotificationViewType.MESSAGE_IN_GROUP:
             case NotificationViewType.MESSAGE: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((MessageNotificationViewHolder) holder).bind(
-                        notification, mIsGroupNotificationAdapter, shouldRestrictMessagePreview());
+                if (shouldRestrictMessagePreview()) {
+                    ((MessageNotificationViewHolder) holder)
+                            .bindRestricted(notification, /* isInGroup= */ false);
+                } else {
+                    ((MessageNotificationViewHolder) holder)
+                            .bind(notification, /* isInGroup= */ false);
+                }
+                break;
+            }
+            case NotificationViewType.MESSAGE_IN_GROUP: {
+                StatusBarNotification notification = notificationGroup.getSingleNotification();
+                if (shouldRestrictMessagePreview()) {
+                    ((MessageNotificationViewHolder) holder)
+                            .bindRestricted(notification, /* isInGroup= */ true);
+                } else {
+                    ((MessageNotificationViewHolder) holder)
+                            .bind(notification, /* isInGroup= */ true);
+                }
                 break;
             }
             case NotificationViewType.MEDIA: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((MediaNotificationViewHolder) holder).bind(notification);
+                ((MediaNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false);
                 break;
             }
-            case NotificationViewType.PROGRESS_IN_GROUP:
             case NotificationViewType.PROGRESS: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 ((ProgressNotificationViewHolder) holder)
-                        .bind(notification, /* isInGroup= */ mIsGroupNotificationAdapter);
+                        .bind(notification, /* isInGroup= */ false);
                 break;
             }
-            case NotificationViewType.INBOX_IN_GROUP:
+            case NotificationViewType.PROGRESS_IN_GROUP: {
+                StatusBarNotification notification = notificationGroup.getSingleNotification();
+                ((ProgressNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true);
+                break;
+            }
             case NotificationViewType.INBOX: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((InboxNotificationViewHolder) holder)
-                        .bind(notification, /* isInGroup= */ mIsGroupNotificationAdapter);
+                ((InboxNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false);
                 break;
             }
-            case NotificationViewType.BASIC_IN_GROUP:
+            case NotificationViewType.INBOX_IN_GROUP: {
+                StatusBarNotification notification = notificationGroup.getSingleNotification();
+                ((InboxNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true);
+                break;
+            }
+            case NotificationViewType.CAR_INFORMATION_IN_GROUP:
+            case NotificationViewType.BASIC_IN_GROUP: {
+                StatusBarNotification notification = notificationGroup.getSingleNotification();
+                ((BasicNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true);
+                break;
+            }
+            case NotificationViewType.CAR_WARNING:
+            case NotificationViewType.CAR_INFORMATION:
             case NotificationViewType.BASIC:
             default: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((BasicNotificationViewHolder) holder)
-                        .bind(notification, /* isInGroup= */ mIsGroupNotificationAdapter);
+                ((BasicNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false);
                 break;
             }
         }
@@ -204,17 +265,23 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                 notificationGroup.getSingleNotification().getNotification();
         Bundle extras = notification.extras;
 
-        // car emergency
-        boolean isEmergency = Notification.CATEGORY_CAR_EMERGENCY.equals(notification.category);
-        if (isEmergency) {
-            return NotificationViewType.EMERGENCY;
-        }
-
-        // messaging
-        boolean isMessage = Notification.CATEGORY_MESSAGE.equals(notification.category);
-        if (isMessage) {
-            return mIsGroupNotificationAdapter
-                    ? NotificationViewType.MESSAGE_IN_GROUP : NotificationViewType.MESSAGE;
+        String category = notification.category;
+        if (category != null) {
+            switch (category) {
+                case Notification.CATEGORY_CAR_EMERGENCY:
+                    return NotificationViewType.CAR_EMERGENCY;
+                case Notification.CATEGORY_CAR_WARNING:
+                    return NotificationViewType.CAR_WARNING;
+                case Notification.CATEGORY_CAR_INFORMATION:
+                    return mIsGroupNotificationAdapter
+                            ? NotificationViewType.CAR_INFORMATION_IN_GROUP
+                            : NotificationViewType.CAR_INFORMATION;
+                case Notification.CATEGORY_MESSAGE:
+                    return mIsGroupNotificationAdapter
+                            ? NotificationViewType.MESSAGE_IN_GROUP : NotificationViewType.MESSAGE;
+                default:
+                    break;
+            }
         }
 
         // media
@@ -261,7 +328,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             Log.i(TAG, "Big picture style is not supported as a car notification");
         }
 
-        // basic, big text, big picture, car warning and car information
+        // basic, big text, big picture
         return mIsGroupNotificationAdapter
                 ? NotificationViewType.BASIC_IN_GROUP : NotificationViewType.BASIC;
     }
@@ -288,7 +355,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      * @param groupKey   the unique identifier of a {@link NotificationGroup}
      * @param isExpanded whether the group notification should be expanded.
      */
-    void setExpanded(String groupKey, boolean isExpanded) {
+    public void setExpanded(String groupKey, boolean isExpanded) {
         if (isExpanded(groupKey) == isExpanded) {
             return;
         }
@@ -332,6 +399,13 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     }
 
     /**
+     * Gets the current {@link CarUxRestrictions}.
+     */
+    public CarUxRestrictions getCarUxRestrictions() {
+        return mCarUxRestrictions;
+    }
+
+    /**
      * Updates notifications and update views.
      */
     public void setNotifications(List<NotificationGroup> notifications) {
@@ -351,20 +425,13 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     }
 
     /**
-     * Gets the current {@link CarUxRestrictions}.
-     */
-    CarUxRestrictions getCarUxRestrictions() {
-        return mCarUxRestrictions;
-    }
-
-    /**
      * Helper method that determines whether a notification is a messaging notification and
      * should have restricted content (no message preview).
      */
     private boolean shouldRestrictMessagePreview() {
         return mCarUxRestrictions != null
                 && (mCarUxRestrictions.getActiveRestrictions()
-                & CarUxRestrictions.UX_RESTRICTIONS_NO_TEXT_MESSAGE) != 0;
+                    & CarUxRestrictions.UX_RESTRICTIONS_NO_TEXT_MESSAGE) != 0;
     }
 
     /**

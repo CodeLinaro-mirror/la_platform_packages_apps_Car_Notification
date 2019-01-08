@@ -13,32 +13,33 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
-import android.annotation.Nullable;
 import android.app.Notification;
 import android.app.PendingIntent;
+import android.content.Context;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.View;
 
-import androidx.recyclerview.widget.RecyclerView;
-
+import com.android.car.notification.R;
 /**
- * Inbox notification view template that
- * displays a {@link android.app.Notification.InboxStyle} notification.
+ * Notification view template that displays a car emergency notification.
  */
-public class InboxNotificationViewHolder extends RecyclerView.ViewHolder {
-    private static final String TAG = "car_notification_inbox";
+public class EmergencyNotificationViewHolder extends CarNotificationBaseViewHolder {
+    private static final String TAG = "car_emergency";
+    private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
-    private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
+    private final CarNotificationBodyView mBodyView;
     private final View mParentView;
+    private StatusBarNotification mStatusBarNotification;
 
-    public InboxNotificationViewHolder(View view) {
+    public EmergencyNotificationViewHolder(View view) {
         super(view);
+        mContext = view.getContext();
         mParentView = view;
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
@@ -46,17 +47,13 @@ public class InboxNotificationViewHolder extends RecyclerView.ViewHolder {
     }
 
     /**
-     * Binds a {@link StatusBarNotification} to an inbox style car notification template.
-     *
-     * @param statusBarNotification passing {@code null} clears the view.
-     * @param isInGroup whether this notification card is part of a group.
+     * Binds a {@link StatusBarNotification} to a car emergency notification template.
      */
-    public void bind(@Nullable StatusBarNotification statusBarNotification, boolean isInGroup) {
+    @Override
+    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
-        if (statusBarNotification == null) {
-            return;
-        }
 
+        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
 
         if (notification.contentIntent != null) {
@@ -69,21 +66,29 @@ public class InboxNotificationViewHolder extends RecyclerView.ViewHolder {
             });
         }
 
-        mHeaderView.bind(statusBarNotification, /* primaryColor= */ null);
+        mHeaderView.bind(statusBarNotification, isInGroup);
         mActionsView.bind(statusBarNotification, isInGroup);
 
         Bundle extraData = notification.extras;
-        CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE_BIG);
-        CharSequence text = extraData.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
+        CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE);
+        CharSequence text = extraData.getCharSequence(Notification.EXTRA_TEXT);
         Icon icon = notification.getLargeIcon();
         mBodyView.bind(title, text, icon);
     }
 
     /**
-     * Resets the inbox notification view empty for recycling.
+     * Resets the basic notification view empty for recycling.
      */
-    private void reset() {
+    @Override
+    void reset() {
+        super.reset();
         mParentView.setClickable(false);
         mParentView.setOnClickListener(null);
     }
+
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mStatusBarNotification;
+    }
+
 }
