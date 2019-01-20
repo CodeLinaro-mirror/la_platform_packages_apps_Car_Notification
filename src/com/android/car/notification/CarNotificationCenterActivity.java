@@ -61,8 +61,10 @@ public class CarNotificationCenterActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         mPreprocessingManager = PreprocessingManager.getInstance(getApplicationContext());
+        NotificationApplication app = (NotificationApplication) getApplication();
         setContentView(R.layout.notification_center_activity);
         mCarNotificationView = findViewById(R.id.notification_view);
+        mCarNotificationView.setClickHandlerFactory(app.getClickHandlerFactory());
         findViewById(R.id.exit_button_container).setOnClickListener(v -> finish());
     }
 
