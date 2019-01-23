@@ -15,6 +15,7 @@
  */
 package com.android.car.notification.template;
 
+import android.annotation.ColorInt;
 import android.app.Notification;
 import android.content.Context;
 import android.service.notification.StatusBarNotification;
@@ -23,6 +24,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.RelativeLayout;
 
+import com.android.car.assist.client.CarAssistUtils;
 import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
 import com.android.car.theme.Themes;
@@ -79,18 +81,21 @@ public class CarNotificationActionsView extends RelativeLayout {
     /**
      * Binds the notification action buttons.
      *
-     * @param clickHandlerFactory used to generate {@link android.view.View.OnClickListener}
+     * @param clickHandlerFactory   factory class used to generate {@link OnClickListener}s.
      * @param statusBarNotification the notification that contains the actions.
-     * @param isInGroup whether the notification is part of a grouped notification.
      */
-    public void bind(NotificationClickHandlerFactory clickHandlerFactory,
-            StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
+    public void bind(
+            NotificationClickHandlerFactory clickHandlerFactory,
+            StatusBarNotification statusBarNotification) {
 
         Notification notification = statusBarNotification.getNotification();
         Notification.Action[] actions = notification.actions;
         if (actions == null || actions.length == 0) {
             return;
+        }
+
+        if (CarAssistUtils.isCarCompatibleMessagingNotification(statusBarNotification)) {
+            mapActionLabels(statusBarNotification);
         }
 
         int length = Math.min(actions.length, MAX_NUM_ACTIONS);
@@ -100,23 +105,53 @@ public class CarNotificationActionsView extends RelativeLayout {
             button.setVisibility(View.VISIBLE);
             // clear spannables and only use the text
             button.setText(action.title.toString());
-            if (notification.color != Notification.COLOR_DEFAULT) {
-                int calculatedColor = NotificationColorUtil.resolveContrastColor(
-                        notification.color, mCardBackgroundColor);
-                button.setTextColor(calculatedColor);
-            }
 
             if (action.actionIntent != null) {
-                button.setOnClickListener(
-                        clickHandlerFactory.getActionClickHandler(statusBarNotification, i));
+                button.setOnClickListener(clickHandlerFactory.getActionClickHandler(
+                        statusBarNotification, i));
             }
         }
     }
 
     /**
+     * Replaces the action labels of the Assistant callbacks with the corresponding
+     * Assistant action labels.
+     * This method has no effect if the notification is not a Car-Compatible Messaging Notification.
+     *
+     * @param sbn the notification whose action labels should be mapped
+     */
+    private void mapActionLabels(StatusBarNotification sbn) {
+        if (CarAssistUtils.isCarCompatibleMessagingNotification(sbn)) {
+            for (Notification.Action action : sbn.getNotification().actions) {
+                mapActionLabels(action);
+            }
+        }
+    }
+
+    private void mapActionLabels(Notification.Action action) {
+        switch (action.getSemanticAction()) {
+            case Notification.Action.SEMANTIC_ACTION_REPLY:
+                action.title = mContext.getString(R.string.assist_action_reply_label);
+                break;
+            case Notification.Action.SEMANTIC_ACTION_MARK_AS_READ:
+                action.title = mContext.getString(R.string.assist_action_read_label);
+            default:
+                // no effect
+                break;
+        }
+    }
+
+    /**
+     * Sets the text color for action buttons.
+     */
+    void setActionTextColor(@ColorInt int color) {
+        mActionButtons.forEach(button -> button.setTextColor(color));
+    }
+
+    /**
      * Resets the notification actions empty for recycling.
      */
-    private void reset() {
+    public void reset() {
         for (Button button : mActionButtons) {
             button.setVisibility(View.GONE);
             button.setText(null);
