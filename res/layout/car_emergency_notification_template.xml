@@ -32,7 +32,7 @@
         app:cardCornerRadius="@dimen/notification_card_radius">
 
         <include
-            layout="@layout/basic_notification_template_inner"
+            layout="@layout/car_emergency_notification_template_inner"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"/>
 

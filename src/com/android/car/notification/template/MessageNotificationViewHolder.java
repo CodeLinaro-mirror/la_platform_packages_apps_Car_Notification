@@ -13,7 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-package com.android.car.notification;
+package com.android.car.notification.template;
 
 import android.annotation.Nullable;
 import android.app.Notification;
@@ -28,20 +28,21 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 
-import androidx.recyclerview.widget.RecyclerView;
+import com.android.car.notification.R;
 
 import java.util.List;
 
 /**
  * Messaging notification template that displays a messaging notification and a voice reply button.
  */
-public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
+public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder {
     private static final String TAG = "car_notification_messaging";
     private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
     private final View mParentView;
+    private StatusBarNotification mStatusBarNotification;
 
     public MessageNotificationViewHolder(View view) {
         super(view);
@@ -53,25 +54,35 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
     }
 
     /**
-     * Binds a {@link StatusBarNotification} to a messaging car notification template.
-     *
-     * @param statusBarNotification passing {@code null} clears the view.
-     * @param isInGroup whether this notification card is part of a group.
-     * @param isRestricted whether this notification should show only a summary of the notification
-     *                     (e.g. "1 new message") or the actual content of the message.
+     * Binds a {@link StatusBarNotification} to a messaging car notification template without
+     * UX restriction.
      */
-    public void bind(
-            @Nullable StatusBarNotification statusBarNotification,
-            boolean isInGroup,
-            boolean isRestricted) {
-
+    @Override
+    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         reset();
-        if (statusBarNotification == null) {
-            return;
-        }
-        mHeaderView.bind(statusBarNotification, /* primaryColor= */ null);
+        bindBody(statusBarNotification, /* isRestricted= */ false);
+        mHeaderView.bind(statusBarNotification, isInGroup);
         mActionsView.bind(statusBarNotification, isInGroup);
+    }
 
+    /**
+     * Binds a {@link StatusBarNotification} to a messaging car notification template with
+     * UX restriction.
+     */
+    public void bindRestricted(StatusBarNotification statusBarNotification, boolean isInGroup) {
+        reset();
+        bindBody(statusBarNotification, /* isRestricted= */ true);
+        mHeaderView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(statusBarNotification, isInGroup);
+    }
+
+    /**
+     * Private method that binds the data to the view.
+     */
+    private void bindBody(
+            @Nullable StatusBarNotification statusBarNotification, boolean isRestricted) {
+
+        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
 
         if (notification.contentIntent != null) {
@@ -138,8 +149,16 @@ public class MessageNotificationViewHolder extends RecyclerView.ViewHolder {
     /**
      * Resets the messaging notification view empty for recycling.
      */
-    private void reset() {
+    @Override
+    void reset() {
+        super.reset();
         mParentView.setClickable(false);
         mParentView.setOnClickListener(null);
     }
+
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mStatusBarNotification;
+    }
+
 }
