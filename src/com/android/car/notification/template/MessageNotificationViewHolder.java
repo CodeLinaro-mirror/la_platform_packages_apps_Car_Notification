@@ -17,7 +17,6 @@ package com.android.car.notification.template;
 
 import android.annotation.Nullable;
 import android.app.Notification;
-import android.app.PendingIntent;
 import android.app.Person;
 import android.content.Context;
 import android.graphics.drawable.Icon;
@@ -25,9 +24,9 @@ import android.os.Bundle;
 import android.os.Parcelable;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
-import android.util.Log;
 import android.view.View;
 
+import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
 
 import java.util.List;
@@ -36,21 +35,20 @@ import java.util.List;
  * Messaging notification template that displays a messaging notification and a voice reply button.
  */
 public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder {
-    private static final String TAG = "car_notification_messaging";
     private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
-    private final View mParentView;
-    private StatusBarNotification mStatusBarNotification;
+    private NotificationClickHandlerFactory mClickHandlerFactory;
 
-    public MessageNotificationViewHolder(View view) {
-        super(view);
+    public MessageNotificationViewHolder(View view,
+            NotificationClickHandlerFactory clickHandlerFactory) {
+        super(view, clickHandlerFactory);
         mContext = view.getContext();
-        mParentView = view;
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
+        mClickHandlerFactory = clickHandlerFactory;
     }
 
     /**
@@ -59,10 +57,10 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
      */
     @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
+        super.bind(statusBarNotification, isInGroup);
         bindBody(statusBarNotification, /* isRestricted= */ false);
         mHeaderView.bind(statusBarNotification, isInGroup);
-        mActionsView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(mClickHandlerFactory, statusBarNotification, isInGroup);
     }
 
     /**
@@ -70,10 +68,10 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
      * UX restriction.
      */
     public void bindRestricted(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
+        super.bind(statusBarNotification, isInGroup);
         bindBody(statusBarNotification, /* isRestricted= */ true);
         mHeaderView.bind(statusBarNotification, isInGroup);
-        mActionsView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(mClickHandlerFactory, statusBarNotification, isInGroup);
     }
 
     /**
@@ -81,19 +79,7 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
      */
     private void bindBody(
             @Nullable StatusBarNotification statusBarNotification, boolean isRestricted) {
-
-        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
-
-        if (notification.contentIntent != null) {
-            mParentView.setOnClickListener(v -> {
-                try {
-                    notification.contentIntent.send();
-                } catch (PendingIntent.CanceledException e) {
-                    Log.e(TAG, "Cannot send pendingIntent in action button");
-                }
-            });
-        }
 
         CharSequence messageText = null;
         CharSequence senderName = null;
@@ -145,20 +131,4 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
 
         mBodyView.bind(senderName, messageText, avatar);
     }
-
-    /**
-     * Resets the messaging notification view empty for recycling.
-     */
-    @Override
-    void reset() {
-        super.reset();
-        mParentView.setClickable(false);
-        mParentView.setOnClickListener(null);
-    }
-
-    @Override
-    public StatusBarNotification getStatusBarNotification() {
-        return mStatusBarNotification;
-    }
-
 }
