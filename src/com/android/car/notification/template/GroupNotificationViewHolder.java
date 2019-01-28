@@ -29,6 +29,7 @@ import androidx.recyclerview.widget.SimpleItemAnimator;
 
 import com.android.car.notification.CarNotificationItemTouchListener;
 import com.android.car.notification.CarNotificationViewAdapter;
+import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.NotificationGroup;
 import com.android.car.notification.R;
 
@@ -39,26 +40,29 @@ import java.util.List;
  * ViewHolder that binds a list of notifications as a grouped notification.
  */
 public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
-    private static final String TAG = "car_notification_group";
+    private final NotificationClickHandlerFactory mClickHandlerFactory;
     private final Context mContext;
     private final View mHeaderDividerView;
     private final Button mToggleButton;
+    private final View mCardView;
     private final RecyclerView mNotificationListView;
     private final CarNotificationViewAdapter mAdapter;
     private final Drawable mExpandDrawable;
     private final Drawable mCollapseDrawable;
     private final Paint mPaint;
     private final int mDividerHeight;
-    private final int mMinTopPadding;
     private final CarNotificationHeaderView mGroupHeaderView;
-    private StatusBarNotification mStatusBarNotification;
+    private StatusBarNotification mSummaryNotification;
 
-    public GroupNotificationViewHolder(View view) {
-        super(view);
+    public GroupNotificationViewHolder(
+            View view, NotificationClickHandlerFactory clickHandlerFactory) {
+        super(view, clickHandlerFactory);
+        mClickHandlerFactory = clickHandlerFactory;
         mContext = view.getContext();
 
         mGroupHeaderView = view.findViewById(R.id.group_header);
         mHeaderDividerView = view.findViewById(R.id.header_divider);
+        mCardView = view.findViewById(R.id.column_card_view);
         mToggleButton = view.findViewById(R.id.group_toggle_button);
         mNotificationListView = view.findViewById(R.id.notification_list);
 
@@ -73,27 +77,39 @@ public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
         mDividerHeight = mContext.getResources().getDimensionPixelSize(
                 R.dimen.car_list_divider_height);
 
-        mMinTopPadding =
-                mContext.getResources().getDimensionPixelOffset(R.dimen.card_min_top_padding);
-
         mNotificationListView.setLayoutManager(new LinearLayoutManager(mContext));
         mNotificationListView.addItemDecoration(new GroupedNotificationItemDecoration());
         ((SimpleItemAnimator) mNotificationListView.getItemAnimator())
                 .setSupportsChangeAnimations(false);
         mNotificationListView.setNestedScrollingEnabled(false);
         mAdapter = new CarNotificationViewAdapter(mContext, /* isGroupNotificationAdapter= */ true);
+        mAdapter.setClickHandlerFactory(clickHandlerFactory);
         mNotificationListView.addOnItemTouchListener(
                 new CarNotificationItemTouchListener(view.getContext(), mAdapter));
         mNotificationListView.setAdapter(mAdapter);
     }
 
+    /**
+     * Because this view holder does not call {@link CarNotificationBaseViewHolder#bind},
+     * we need to override this method.
+     */
+    @Override
+    public StatusBarNotification getStatusBarNotification() {
+        return mSummaryNotification;
+    }
+
+    /**
+     * Group notification view holder is special in that it requires extra data to bind,
+     * therefore the standard bind() method is no used. We are calling super.reset()
+     * directly and binding the onclick listener manually because the card's on click behavior is
+     * different when collapsed/expanded.
+     */
     public void bind(
             NotificationGroup group, CarNotificationViewAdapter parentAdapter, boolean isExpanded) {
-        reset();
+        super.reset();
 
-        mStatusBarNotification = group.getSingleNotification();
-
-        mGroupHeaderView.bind(mStatusBarNotification, /* isInGroup= */ false);
+        mSummaryNotification = group.getGroupSummaryNotification();
+        mGroupHeaderView.bind(mSummaryNotification, /* isInGroup= */ false);
 
         mAdapter.setCarUxRestrictions(parentAdapter.getCarUxRestrictions());
 
@@ -105,7 +121,15 @@ public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
         // expand button
         updateToggleButton(group.getChildCount(), isExpanded);
         mToggleButton.setOnClickListener(
-                view -> parentAdapter.setExpanded(group.getGroupKey(), !isExpanded));
+                view -> {
+                    boolean isExpanding = !isExpanded;
+                    parentAdapter.setExpanded(group.getGroupKey(), isExpanding);
+                    mAdapter.notifyDataSetChanged();
+
+                    // When expanding, do not set an onClickListener on the overall card view.
+                    mCardView.setOnClickListener(isExpanding
+                            ? null : mClickHandlerFactory.getClickHandler(mSummaryNotification));
+                });
 
         // notification cards
         List<NotificationGroup> list = new ArrayList<>();
@@ -175,24 +199,4 @@ public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
             c.drawRect(left, top, right, bottom, mPaint);
         }
     }
-
-    @Override
-    void reset() {
-        super.reset();
-    }
-
-    /**
-     * Group notification view holder is special in that it requires extra data to bind,
-     * therefore the standard bind() method is no used. Still implementing
-     * {@link CarNotificationBaseViewHolder} because the touch events/animations need to work.
-     */
-    @Override
-    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-    }
-
-    @Override
-    public StatusBarNotification getStatusBarNotification() {
-        return mStatusBarNotification;
-    }
-
 }

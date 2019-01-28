@@ -29,6 +29,7 @@ import android.widget.ImageButton;
 
 import androidx.car.widget.ColumnCardView;
 
+import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
 
 import java.util.ArrayList;
@@ -43,16 +44,14 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
     private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
-    private final View mParentView;
     private final ColumnCardView mCardView;
     private final List<ImageButton> mButtons;
     private final View mActionBarView;
-    private StatusBarNotification mStatusBarNotification;
 
-    public MediaNotificationViewHolder(View view) {
-        super(view);
+    public MediaNotificationViewHolder(View view,
+            NotificationClickHandlerFactory clickHandlerFactory) {
+        super(view, clickHandlerFactory);
         mContext = view.getContext();
-        mParentView = view;
         mCardView = view.findViewById(R.id.column_card_view);
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
@@ -70,20 +69,8 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
      */
     @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
-
-        mStatusBarNotification = statusBarNotification;
+        super.bind(statusBarNotification, isInGroup);
         Notification notification = statusBarNotification.getNotification();
-
-        if (notification.contentIntent != null) {
-            mParentView.setOnClickListener(v -> {
-                try {
-                    notification.contentIntent.send();
-                } catch (PendingIntent.CanceledException e) {
-                    Log.e(TAG, "Cannot send pendingIntent in action button");
-                }
-            });
-        }
 
         // colors
         Notification.Builder builder = Notification.Builder.recoverBuilder(mContext, notification);
@@ -140,20 +127,9 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
      */
     @Override
     void reset() {
-        super.reset();
-
-        mParentView.setClickable(false);
-        mParentView.setOnClickListener(null);
-
         mButtons.forEach(button -> {
             button.setImageDrawable(null);
             button.setVisibility(View.GONE);
         });
     }
-
-    @Override
-    public StatusBarNotification getStatusBarNotification() {
-        return mStatusBarNotification;
-    }
-
 }

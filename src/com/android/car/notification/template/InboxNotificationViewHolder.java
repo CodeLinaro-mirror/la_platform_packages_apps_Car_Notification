@@ -16,32 +16,30 @@
 package com.android.car.notification.template;
 
 import android.app.Notification;
-import android.app.PendingIntent;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
-import android.util.Log;
 import android.view.View;
 
+import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
 /**
  * Inbox notification view template that
  * displays a {@link android.app.Notification.InboxStyle} notification.
  */
 public class InboxNotificationViewHolder extends CarNotificationBaseViewHolder {
-    private static final String TAG = "car_notification_inbox";
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
-    private final View mParentView;
-    private StatusBarNotification mStatusBarNotification;
+    private NotificationClickHandlerFactory mClickHandlerFactory;
 
-    public InboxNotificationViewHolder(View view) {
-        super(view);
-        mParentView = view;
+    public InboxNotificationViewHolder(
+            View view, NotificationClickHandlerFactory clickHandlerFactory) {
+        super(view, clickHandlerFactory);
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
+        mClickHandlerFactory = clickHandlerFactory;
     }
 
     /**
@@ -49,49 +47,21 @@ public class InboxNotificationViewHolder extends CarNotificationBaseViewHolder {
      */
     @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
+        super.bind(statusBarNotification, isInGroup);
         bindBody(statusBarNotification);
         mHeaderView.bind(statusBarNotification, isInGroup);
-        mActionsView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(mClickHandlerFactory, statusBarNotification, isInGroup);
     }
 
     /**
      * Private method that binds the data to the view.
      */
     private void bindBody(StatusBarNotification statusBarNotification) {
-        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
-
-        if (notification.contentIntent != null) {
-            mParentView.setOnClickListener(v -> {
-                try {
-                    notification.contentIntent.send();
-                } catch (PendingIntent.CanceledException e) {
-                    Log.e(TAG, "Cannot send pendingIntent in action button");
-                }
-            });
-        }
-
         Bundle extraData = notification.extras;
         CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE_BIG);
         CharSequence text = extraData.getCharSequence(Notification.EXTRA_SUMMARY_TEXT);
         Icon icon = notification.getLargeIcon();
         mBodyView.bind(title, text, icon);
     }
-
-    /**
-     * Resets the inbox notification view empty for recycling.
-     */
-    @Override
-    void reset() {
-        super.reset();
-        mParentView.setClickable(false);
-        mParentView.setOnClickListener(null);
-    }
-
-    @Override
-    public StatusBarNotification getStatusBarNotification() {
-        return mStatusBarNotification;
-    }
-
 }
