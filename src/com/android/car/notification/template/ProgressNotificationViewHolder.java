@@ -15,36 +15,41 @@
  */
 package com.android.car.notification.template;
 
+import android.annotation.ColorInt;
 import android.app.Notification;
-import android.app.PendingIntent;
+import android.content.res.ColorStateList;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
-import android.util.Log;
 import android.view.View;
 import android.widget.ProgressBar;
 
+import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
+import com.android.car.theme.Themes;
+
 /**
  * Basic notification view template that displays a progress bar notification.
  * This template is only used in notification center and never as a heads-up notification.
  */
 public class ProgressNotificationViewHolder extends CarNotificationBaseViewHolder {
-    private static final String TAG = "car_notification_basic";
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationActionsView mActionsView;
     private final ProgressBar mProgressBarView;
-    private final View mParentView;
-    private StatusBarNotification mStatusBarNotification;
+    @ColorInt
+    private final int mCardBackgroundColor;
+    private NotificationClickHandlerFactory mClickHandlerFactory;
 
-    public ProgressNotificationViewHolder(View view) {
-        super(view);
-        mParentView = view;
+    public ProgressNotificationViewHolder(View view,
+            NotificationClickHandlerFactory clickHandlerFactory) {
+        super(view, clickHandlerFactory);
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
         mActionsView = view.findViewById(R.id.notification_actions);
         mProgressBarView = view.findViewById(R.id.progress_bar);
+        mCardBackgroundColor = Themes.getAttrColor(view.getContext(), android.R.attr.colorPrimary);
+        mClickHandlerFactory = clickHandlerFactory;
     }
 
     /**
@@ -52,28 +57,17 @@ public class ProgressNotificationViewHolder extends CarNotificationBaseViewHolde
      */
     @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
+        super.bind(statusBarNotification, isInGroup);
         bindBody(statusBarNotification);
         mHeaderView.bind(statusBarNotification, isInGroup);
-        mActionsView.bind(statusBarNotification, isInGroup);
+        mActionsView.bind(mClickHandlerFactory, statusBarNotification);
     }
 
     /**
      * Private method that binds the data to the view.
      */
     private void bindBody(StatusBarNotification statusBarNotification) {
-        mStatusBarNotification = statusBarNotification;
         Notification notification = statusBarNotification.getNotification();
-
-        if (notification.contentIntent != null) {
-            mParentView.setOnClickListener(v -> {
-                try {
-                    notification.contentIntent.send();
-                } catch (PendingIntent.CanceledException e) {
-                    Log.e(TAG, "Cannot send pendingIntent in action button");
-                }
-            });
-        }
 
         Bundle extraData = notification.extras;
         CharSequence title = extraData.getCharSequence(Notification.EXTRA_TITLE);
@@ -82,13 +76,20 @@ public class ProgressNotificationViewHolder extends CarNotificationBaseViewHolde
         mBodyView.bind(title, text, icon);
 
         mProgressBarView.setVisibility(View.VISIBLE);
-        boolean isIndeterminate = extraData.getBoolean(
-                Notification.EXTRA_PROGRESS_INDETERMINATE);
+        boolean isIndeterminate = extraData.getBoolean(Notification.EXTRA_PROGRESS_INDETERMINATE);
         int progress = extraData.getInt(Notification.EXTRA_PROGRESS);
         int progressMax = extraData.getInt(Notification.EXTRA_PROGRESS_MAX);
         mProgressBarView.setIndeterminate(isIndeterminate);
         mProgressBarView.setMax(progressMax);
         mProgressBarView.setProgress(progress);
+
+        // optional color
+        if (notification.color != Notification.COLOR_DEFAULT) {
+            int calculatedColor = NotificationColorUtil.resolveContrastColor(
+                    notification.color, mCardBackgroundColor);
+            ColorStateList colorStateList = ColorStateList.valueOf(calculatedColor);
+            mProgressBarView.setProgressTintList(colorStateList);
+        }
     }
 
     /**
@@ -97,17 +98,8 @@ public class ProgressNotificationViewHolder extends CarNotificationBaseViewHolde
     @Override
     void reset() {
         super.reset();
-
-        mParentView.setClickable(false);
-        mParentView.setOnClickListener(null);
-
         mProgressBarView.setProgress(0);
         mProgressBarView.setVisibility(View.GONE);
+        mProgressBarView.setProgressTintList(null);
     }
-
-    @Override
-    public StatusBarNotification getStatusBarNotification() {
-        return mStatusBarNotification;
-    }
-
 }

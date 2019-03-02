@@ -25,16 +25,15 @@ import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
-import android.text.format.DateUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.View;
+import android.widget.DateTimeView;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import com.android.car.notification.R;
-import com.android.car.theme.Themes;
 
 /**
  * Notification header view that contains the issuer app icon and name, and extra information.
@@ -45,11 +44,11 @@ public class CarNotificationHeaderView extends LinearLayout {
 
     private final PackageManager mPackageManager;
     private final int mDefaultTextColor;
-    private final int mCardBackgroundColor;
     private final String mSeparatorText;
 
     private ImageView mIconView;
     private TextView mHeaderTextView;
+    private DateTimeView mTimeView;
 
     public CarNotificationHeaderView(Context context) {
         super(context);
@@ -70,8 +69,7 @@ public class CarNotificationHeaderView extends LinearLayout {
 
     {
         mPackageManager = getContext().getPackageManager();
-        mCardBackgroundColor = Themes.getAttrColor(getContext(), android.R.attr.colorPrimary);
-        mDefaultTextColor = Themes.getAttrColor(getContext(), android.R.attr.textColorPrimary);
+        mDefaultTextColor = getContext().getColor(R.color.primary_text_color);
         mSeparatorText = getContext().getString(R.string.header_text_separator);
         inflate(getContext(), R.layout.car_notification_header_view, this);
     }
@@ -81,17 +79,17 @@ public class CarNotificationHeaderView extends LinearLayout {
         super.onFinishInflate();
         mIconView = findViewById(R.id.app_icon);
         mHeaderTextView = findViewById(R.id.header_text);
+        mTimeView = findViewById(R.id.time);
+        mTimeView.setShowRelativeTime(true);
     }
 
     /**
      * Binds the notification header that contains the issuer app icon and name.
      *
      * @param statusBarNotification the notification to be bound.
-     * @param isInGroup whether this notification is part of a grouped notification.
+     * @param isInGroup             whether this notification is part of a grouped notification.
      */
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
-
         if (isInGroup) {
             // if the notification is part of a group, individual headers are not shown
             // instead, there is a header for the entire group in the group notification template
@@ -127,25 +125,13 @@ public class CarNotificationHeaderView extends LinearLayout {
         }
 
         // optional field: time
-        if (extras.getBoolean(Notification.EXTRA_SHOW_WHEN, false)) {
+        if (notification.showsTime()) {
             stringBuilder.append(mSeparatorText);
-            CharSequence dateString = DateUtils.getRelativeDateTimeString(
-                    getContext(),
-                    statusBarNotification.getPostTime(),
-                    DateUtils.SECOND_IN_MILLIS,
-                    DateUtils.WEEK_IN_MILLIS,
-                    DateUtils.FORMAT_ABBREV_ALL);
-            stringBuilder.append(dateString);
+            mTimeView.setVisibility(View.VISIBLE);
+            mTimeView.setTime(notification.when);
         }
 
         mHeaderTextView.setText(stringBuilder);
-
-        // optional color
-        if (notification.color != Notification.COLOR_DEFAULT) {
-            int calculatedColor = NotificationColorUtil.resolveContrastColor(
-                    notification.color, mCardBackgroundColor);
-            mIconView.setColorFilter(calculatedColor);
-        }
     }
 
     /**
@@ -160,19 +146,45 @@ public class CarNotificationHeaderView extends LinearLayout {
         bind(statusBarNotification, false);
         mIconView.setColorFilter(mediaForegroundColor);
         mHeaderTextView.setTextColor(mediaForegroundColor);
+        mTimeView.setTextColor(mediaForegroundColor);
+    }
+
+    /**
+     * Sets the color for the small icon.
+     */
+    public void setSmallIconColor(@ColorInt int color) {
+        mIconView.setColorFilter(color);
+    }
+
+    /**
+     * Sets the header text color.
+     */
+    public void setHeaderTextColor(@ColorInt int color) {
+        mHeaderTextView.setTextColor(color);
+    }
+
+    /**
+     * Sets the text color for the time field.
+     */
+    public void setTimeTextColor(@ColorInt int color) {
+        mTimeView.setTextColor(color);
     }
 
     /**
      * Resets the notification header empty.
      */
-    private void reset() {
+    public void reset() {
         mIconView.setVisibility(View.GONE);
         mIconView.setImageDrawable(null);
-        mIconView.setColorFilter(mDefaultTextColor);
+        setSmallIconColor(mDefaultTextColor);
 
         mHeaderTextView.setVisibility(View.GONE);
         mHeaderTextView.setText(null);
-        mHeaderTextView.setTextColor(mDefaultTextColor);
+        setHeaderTextColor(mDefaultTextColor);
+
+        mTimeView.setVisibility(View.GONE);
+        mTimeView.setTime(0);
+        setTimeTextColor(mDefaultTextColor);
     }
 
     /**

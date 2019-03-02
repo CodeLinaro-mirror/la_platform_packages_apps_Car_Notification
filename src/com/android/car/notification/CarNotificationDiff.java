@@ -130,6 +130,18 @@ class CarNotificationDiff extends DiffUtil.Callback {
     }
 
     /**
+     * Shallow comparison for {@link StatusBarNotification}: comparing the unique IDs and the
+     * notification Flags.
+     *
+     * <p> Returns true if two notifications have the same key and notification flags.
+     */
+    static boolean sameNotificationKeyAndFlags(
+            StatusBarNotification oldItem, StatusBarNotification newItem) {
+        return sameNotificationKey(oldItem, newItem)
+                && oldItem.getNotification().flags == newItem.getNotification().flags;
+    }
+
+    /**
      * Deep comparison for {@link NotificationGroup}.
      *
      * <p> Compare the content of each StatusBarNotification inside the NotificationGroup.
@@ -190,13 +202,12 @@ class CarNotificationDiff extends DiffUtil.Callback {
         if (oldNotification.flags != newNotification.flags
                 || oldNotification.category != newNotification.category
                 || oldNotification.color != newNotification.color
-                || oldNotification.bigContentView != newNotification.bigContentView
                 || !areBundlesEqual(oldNotification.extras, newNotification.extras)
                 || !Objects.equals(oldNotification.contentIntent, newNotification.contentIntent)
                 || !Objects.equals(oldNotification.deleteIntent, newNotification.deleteIntent)
                 || !Objects.equals(
                         oldNotification.fullScreenIntent, newNotification.fullScreenIntent)
-                || !Objects.deepEquals(oldNotification.actions, newNotification.actions)){
+                || !Objects.deepEquals(oldNotification.actions, newNotification.actions)) {
             return false;
         }
 

@@ -16,6 +16,7 @@
 
 package com.android.car.notification.template;
 
+import android.annotation.ColorInt;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
@@ -29,6 +30,7 @@ import android.widget.ImageButton;
 
 import androidx.car.widget.ColumnCardView;
 
+import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
 
 import java.util.ArrayList;
@@ -43,16 +45,15 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
     private final Context mContext;
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationBodyView mBodyView;
-    private final View mParentView;
     private final ColumnCardView mCardView;
     private final List<ImageButton> mButtons;
     private final View mActionBarView;
-    private StatusBarNotification mStatusBarNotification;
+    @ColorInt private int mAlbumColor;
 
-    public MediaNotificationViewHolder(View view) {
-        super(view);
+    public MediaNotificationViewHolder(View view,
+            NotificationClickHandlerFactory clickHandlerFactory) {
+        super(view, clickHandlerFactory);
         mContext = view.getContext();
-        mParentView = view;
         mCardView = view.findViewById(R.id.column_card_view);
         mHeaderView = view.findViewById(R.id.notification_header);
         mBodyView = view.findViewById(R.id.notification_body);
@@ -65,36 +66,29 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
         mButtons.add(view.findViewById(R.id.action_5));
     }
 
+    @Override
+    boolean hasCustomBackgroundColor() {
+        return mAlbumColor != Notification.COLOR_DEFAULT;
+    }
+
     /**
      * Binds a {@link StatusBarNotification} to a car media notification template.
      */
     @Override
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        reset();
-
-        mStatusBarNotification = statusBarNotification;
+        super.bind(statusBarNotification, isInGroup);
         Notification notification = statusBarNotification.getNotification();
-
-        if (notification.contentIntent != null) {
-            mParentView.setOnClickListener(v -> {
-                try {
-                    notification.contentIntent.send();
-                } catch (PendingIntent.CanceledException e) {
-                    Log.e(TAG, "Cannot send pendingIntent in action button");
-                }
-            });
-        }
 
         // colors
         Notification.Builder builder = Notification.Builder.recoverBuilder(mContext, notification);
         Context packageContext = statusBarNotification.getPackageContext(mContext);
         MediaNotificationProcessor processor =
                 new MediaNotificationProcessor(mContext, packageContext);
-        int averageColor = processor.processNotification(notification, builder);
+        mAlbumColor = processor.processNotification(notification, builder);
         int primaryColor = builder.getPrimaryTextColor();
 
-        mCardView.setCardBackgroundColor(averageColor);
-        mActionBarView.setBackgroundColor(averageColor);
+        mCardView.setCardBackgroundColor(mAlbumColor);
+        mActionBarView.setBackgroundColor(mAlbumColor);
 
         // header
         mHeaderView.bindWithMediaColor(statusBarNotification, primaryColor);
@@ -105,8 +99,6 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
         CharSequence text = extraData.getCharSequence(Notification.EXTRA_TEXT);
         Icon icon = notification.getLargeIcon();
         mBodyView.bind(title, text, icon);
-        mBodyView.setPrimaryTextColor(primaryColor);
-        mBodyView.setSecondaryTextColor(builder.getSecondaryTextColor());
 
         // action buttons
         Notification.Action[] actions = notification.actions;
@@ -141,19 +133,9 @@ public class MediaNotificationViewHolder extends CarNotificationBaseViewHolder {
     @Override
     void reset() {
         super.reset();
-
-        mParentView.setClickable(false);
-        mParentView.setOnClickListener(null);
-
         mButtons.forEach(button -> {
             button.setImageDrawable(null);
             button.setVisibility(View.GONE);
         });
     }
-
-    @Override
-    public StatusBarNotification getStatusBarNotification() {
-        return mStatusBarNotification;
-    }
-
 }
