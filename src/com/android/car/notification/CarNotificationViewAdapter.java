@@ -33,7 +33,6 @@ import com.android.car.notification.template.EmergencyNotificationViewHolder;
 import com.android.car.notification.template.GroupNotificationViewHolder;
 import com.android.car.notification.template.GroupSummaryNotificationViewHolder;
 import com.android.car.notification.template.InboxNotificationViewHolder;
-import com.android.car.notification.template.MediaNotificationViewHolder;
 import com.android.car.notification.template.MessageNotificationViewHolder;
 import com.android.car.notification.template.ProgressNotificationViewHolder;
 
@@ -61,7 +60,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      * Constructor for a notification adapter.
      * Can be used both by the root notification list view, or a grouped notification view.
      *
-     * @param context                    the context for resources and inflating views
+     * @param context the context for resources and inflating views
      * @param isGroupNotificationAdapter true if this adapter is used by a grouped notification view
      */
     public CarNotificationViewAdapter(Context context, boolean isGroupNotificationAdapter) {
@@ -124,10 +123,6 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             case NotificationViewType.MESSAGE:
                 view = mInflater.inflate(R.layout.message_notification_template, parent, false);
                 viewHolder = new MessageNotificationViewHolder(view, mClickHandlerFactory);
-                break;
-            case NotificationViewType.MEDIA:
-                view = mInflater.inflate(R.layout.media_notification_template, parent, false);
-                viewHolder = new MediaNotificationViewHolder(view, mClickHandlerFactory);
                 break;
             case NotificationViewType.PROGRESS_IN_GROUP:
                 view = mInflater.inflate(
@@ -208,11 +203,6 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                 }
                 break;
             }
-            case NotificationViewType.MEDIA: {
-                StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((MediaNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false);
-                break;
-            }
             case NotificationViewType.PROGRESS: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 ((ProgressNotificationViewHolder) holder)
@@ -286,11 +276,6 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             }
         }
 
-        // media
-        if (notification.isMediaNotification()) {
-            return NotificationViewType.MEDIA;
-        }
-
         // progress
         int progressMax = extras.getInt(Notification.EXTRA_PROGRESS_MAX);
         boolean isIndeterminate = extras.getBoolean(
@@ -339,8 +324,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public int getItemCount() {
         int itemCount = mNotifications.size();
 
-        if (!mIsGroupNotificationAdapter
-                && mCarUxRestrictions != null
+        if (!mIsGroupNotificationAdapter && mCarUxRestrictions != null
                 && (mCarUxRestrictions.getActiveRestrictions()
                     & CarUxRestrictions.UX_RESTRICTIONS_LIMIT_CONTENT) != 0) {
 
@@ -362,7 +346,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     /**
      * Set the expansion state of a group notification given its group key.
      *
-     * @param groupKey   the unique identifier of a {@link NotificationGroup}
+     * @param groupKey the unique identifier of a {@link NotificationGroup}
      * @param isExpanded whether the group notification should be expanded.
      */
     public void setExpanded(String groupKey, boolean isExpanded) {
@@ -392,6 +376,13 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     }
 
     /**
+     * Clear all notifications.
+     */
+    public void clearAllNotifications() {
+        mClickHandlerFactory.clearAllNotifications();
+    }
+
+    /**
      * Updates notifications and update views.
      */
     public void setNotifications(List<NotificationGroup> notifications) {
@@ -415,9 +406,8 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      * should have restricted content (no message preview).
      */
     private boolean shouldRestrictMessagePreview() {
-        return mCarUxRestrictions != null
-                && (mCarUxRestrictions.getActiveRestrictions()
-                    & CarUxRestrictions.UX_RESTRICTIONS_NO_TEXT_MESSAGE) != 0;
+        return mCarUxRestrictions != null && (mCarUxRestrictions.getActiveRestrictions()
+                & CarUxRestrictions.UX_RESTRICTIONS_NO_TEXT_MESSAGE) != 0;
     }
 
     /**

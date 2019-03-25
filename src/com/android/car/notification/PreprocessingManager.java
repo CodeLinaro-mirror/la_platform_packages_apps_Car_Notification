@@ -15,9 +15,11 @@
  */
 package com.android.car.notification;
 
+import android.annotation.Nullable;
 import android.app.Notification;
+import android.app.NotificationManager;
 import android.car.CarNotConnectedException;
-import android.car.drivingstate.CarUxRestrictions;
+import android.car.drivingstate.CarUxRestrictionsManager;
 import android.content.Context;
 import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
@@ -27,6 +29,8 @@ import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.android.car.notification.template.MessageNotificationViewHolder;
+
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -35,22 +39,19 @@ import java.util.SortedMap;
 import java.util.TreeMap;
 
 /**
- * Manager that groups and ranks the notifications in the notification center.
+ * Manager that filters, groups and ranks the notifications in the notification center.
+ *
+ * <p> Note that heads-up notifications have a different filtering mechanism and is managed by
+ * {@link CarHeadsUpNotificationManager}.
  */
 public class PreprocessingManager {
     private static final String TAG = "PreprocessingManager";
     private static PreprocessingManager mInstance;
     private final String mEllipsizedString;
-    private final boolean mEnableMediaNotification;
-    private final boolean mEnableOngoingNotification;
-    private CarUxRestrictionManagerWrapper mUxRestrictionsManager;
+    private int mMaxStringLength = Integer.MAX_VALUE;
 
     private PreprocessingManager(Context context) {
         mEllipsizedString = context.getString(R.string.ellipsized_string);
-        mEnableMediaNotification =
-                context.getResources().getBoolean(R.bool.config_showMediaNotification);
-        mEnableOngoingNotification =
-                context.getResources().getBoolean(R.bool.config_showOngoingNotification);
     }
 
     public static PreprocessingManager getInstance(Context context) {
@@ -63,55 +64,92 @@ public class PreprocessingManager {
     /**
      * Process the given notifications.
      *
-     * @param rankingMap    the ranking map for the notifications.
+     * @param showLessImportantNotifications whether less important notifications should be shown.
+     * @param notifications the list of notifications to be processed.
+     * @param rankingMap the ranking map for the notifications.
      * @return the processed notifications in a new list.
      */
     public List<NotificationGroup> process(
+            boolean showLessImportantNotifications,
             @NonNull List<StatusBarNotification> notifications,
             @NonNull NotificationListenerService.RankingMap rankingMap) {
 
         return new ArrayList<>(
-                rank(group(optimizeForDriving(filter(notifications))), rankingMap));
+                rank(group(optimizeForDriving(
+                        filter(showLessImportantNotifications,
+                                new ArrayList<>(notifications),
+                                rankingMap))),
+                        rankingMap));
     }
 
     /**
      * Filter a list of {@link StatusBarNotification}s according to OEM's configurations.
      */
-    private List<StatusBarNotification> filter(List<StatusBarNotification> notifications) {
-        if (!mEnableMediaNotification) {
+    private List<StatusBarNotification> filter(
+            boolean showLessImportantNotifications,
+            List<StatusBarNotification> notifications,
+            NotificationListenerService.RankingMap rankingMap) {
+
+        // remove less important foreground service notifications for car
+        if (!showLessImportantNotifications) {
             notifications.removeIf(
-                    statusBarNotification ->
-                            Notification.CATEGORY_TRANSPORT.equals(
-                                    statusBarNotification.getNotification().category));
+                    statusBarNotification -> {
+                        boolean isForeground =
+                                (statusBarNotification.getNotification().flags
+                                        & Notification.FLAG_FOREGROUND_SERVICE) != 0;
+
+                        if (!isForeground) {
+                            return false;
+                        }
+
+                        int importance = 0;
+                        NotificationListenerService.Ranking ranking =
+                                new NotificationListenerService.Ranking();
+                        if (rankingMap.getRanking(statusBarNotification.getKey(), ranking)) {
+                            importance = ranking.getImportance();
+                        }
+                        return importance < NotificationManager.IMPORTANCE_DEFAULT;
+                    });
+
+            // remove media and navigation notifications in the notification center for car
+            notifications.removeIf(
+                    statusBarNotification -> {
+                        Notification notification = statusBarNotification.getNotification();
+                        return notification.isMediaNotification()
+                                || Notification.CATEGORY_NAVIGATION.equals(notification.category);
+                    });
         }
-        if (!mEnableOngoingNotification) {
-            notifications.removeIf(statusBarNotification -> statusBarNotification.isOngoing());
-        }
+
         return notifications;
     }
 
     /**
      * Process a list of {@link StatusBarNotification}s to be driving optimized.
-     * Note that the string length limit is always respected regardless of whether distraction
+     *
+     * <p> Note that the string length limit is always respected regardless of whether distraction
      * optimization is required.
      */
     private List<StatusBarNotification> optimizeForDriving(
             List<StatusBarNotification> notifications) {
-        notifications.forEach(
-                notification -> notification = optimizeForDriving(notification));
+        notifications.forEach(notification -> notification = optimizeForDriving(notification));
         return notifications;
     }
 
     /**
      * Helper method that optimize a single {@link StatusBarNotification} for driving.
-     * Currently only trimming texts that have visual effects in car.
-     * Operation is done on the original notification object passed in; no new object is created.
+     *
+     * <p> Currently only trimming texts that have visual effects in car. Operation is done on
+     * the original notification object passed in; no new object is created.
+     *
+     * <p> Note that message notifications are not trimmed, so that messages are preserved for
+     * assistant read-out. Instead, {@link MessageNotificationViewHolder} will be responsible for
+     * the presentation-level text truncation.
      */
     StatusBarNotification optimizeForDriving(StatusBarNotification notification) {
-        CarUxRestrictions carUxRestrictions = getCurrentUxRestrictions();
-        int maxStringLength = carUxRestrictions != null
-                ? carUxRestrictions.getMaxRestrictedStringLength()
-                : Integer.MAX_VALUE;
+        if (Notification.CATEGORY_MESSAGE.equals(notification.getNotification().category)) {
+            return notification;
+        }
+
         Bundle extras = notification.getNotification().extras;
         for (String key : extras.keySet()) {
             switch (key) {
@@ -120,15 +158,25 @@ public class PreprocessingManager {
                 case Notification.EXTRA_TITLE_BIG:
                 case Notification.EXTRA_SUMMARY_TEXT:
                     CharSequence value = extras.getCharSequence(key);
-                    if (!TextUtils.isEmpty(value) && value.length() > maxStringLength) {
-                        extras.putString(key, value.toString()
-                                .substring(0, maxStringLength).concat(mEllipsizedString));
-                    }
+                    extras.putCharSequence(key, trimText(value));
                 default:
                     continue;
             }
         }
         return notification;
+    }
+
+    /**
+     * Helper method that takes a string and trims the length to the maximum character allowed
+     * by the {@link CarUxRestrictionsManager}.
+     */
+    @Nullable
+    public CharSequence trimText(@Nullable CharSequence text) {
+        if (TextUtils.isEmpty(text) || text.length() < mMaxStringLength) {
+            return text;
+        }
+        int maxLength = mMaxStringLength - mEllipsizedString.length();
+        return text.toString().substring(0, maxLength).concat(mEllipsizedString);
     }
 
     /**
@@ -184,19 +232,14 @@ public class PreprocessingManager {
     }
 
     public void setCarUxRestrictionManagerWrapper(CarUxRestrictionManagerWrapper manager) {
-        mUxRestrictionsManager = manager;
-    }
-
-    private CarUxRestrictions getCurrentUxRestrictions() {
-        if (mUxRestrictionsManager == null) {
-            return null;
-        }
-
         try {
-            return mUxRestrictionsManager.getCurrentCarUxRestrictions();
+            if (manager == null || manager.getCurrentCarUxRestrictions() == null) {
+                return;
+            }
+            mMaxStringLength = manager.getCurrentCarUxRestrictions().getMaxRestrictedStringLength();
         } catch (CarNotConnectedException e) {
+            mMaxStringLength = Integer.MAX_VALUE;
             Log.e(TAG, "Failed to get UxRestrictions thus running unrestricted", e);
-            return null;
         }
     }
 
