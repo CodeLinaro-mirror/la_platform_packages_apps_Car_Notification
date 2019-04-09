@@ -47,6 +47,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
 
     private final Context mContext;
     private final LayoutInflater mInflater;
+    private final int mMaxNumberGroupChildrenShown;
     private final boolean mIsGroupNotificationAdapter;
     // book keeping expanded notification groups
     private final List<String> mExpandedNotifications = new ArrayList<>();
@@ -66,6 +67,8 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public CarNotificationViewAdapter(Context context, boolean isGroupNotificationAdapter) {
         mContext = context;
         mInflater = LayoutInflater.from(context);
+        mMaxNumberGroupChildrenShown =
+                mContext.getResources().getInteger(R.integer.max_group_children_number);
         mIsGroupNotificationAdapter = isGroupNotificationAdapter;
         setHasStableIds(true);
         if (!mIsGroupNotificationAdapter) {
@@ -324,6 +327,10 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public int getItemCount() {
         int itemCount = mNotifications.size();
 
+        if (mIsGroupNotificationAdapter && itemCount > mMaxNumberGroupChildrenShown) {
+            return mMaxNumberGroupChildrenShown;
+        }
+
         if (!mIsGroupNotificationAdapter && mCarUxRestrictions != null
                 && (mCarUxRestrictions.getActiveRestrictions()
                     & CarUxRestrictions.UX_RESTRICTIONS_LIMIT_CONTENT) != 0) {
@@ -397,6 +404,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      * Sets the current {@link CarUxRestrictions}.
      */
     public void setCarUxRestrictions(CarUxRestrictions carUxRestrictions) {
+        Log.d(TAG, "setCarUxRestrictions");
         mCarUxRestrictions = carUxRestrictions;
         notifyDataSetChanged();
     }
