@@ -26,7 +26,7 @@ import android.widget.TextView;
 import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.NotificationGroup;
 import com.android.car.notification.R;
-import com.android.car.theme.Themes;
+import com.android.car.notification.ThemesUtil;
 
 import java.util.List;
 
@@ -54,8 +54,8 @@ public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewH
             View view, NotificationClickHandlerFactory clickHandlerFactory) {
         super(view, clickHandlerFactory);
         mContext = view.getContext();
-        mCardBackgroundColor = Themes.getAttrColor(mContext, android.R.attr.colorPrimary);
-        mDefaultTextColor = Themes.getAttrColor(mContext, android.R.attr.textColorPrimary);
+        mCardBackgroundColor = ThemesUtil.getAttrColor(mContext, android.R.attr.colorPrimary);
+        mDefaultTextColor = ThemesUtil.getAttrColor(mContext, android.R.attr.textColorPrimary);
         mTitle1View = view.findViewById(R.id.child_notification_title_1);
         mTitle2View = view.findViewById(R.id.child_notification_title_2);
         mUnshownCountView = view.findViewById(R.id.unshown_count);
@@ -70,7 +70,8 @@ public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewH
      * need to work.
      */
     public void bind(NotificationGroup notificationGroup) {
-        super.bind(notificationGroup.getSingleNotification(), /* isInGroup= */ false);
+        // isInGroup is always true for group summaries
+        super.bind(notificationGroup.getSingleNotification(), /* isInGroup= */ true);
 
         List<String> titles = notificationGroup.getChildTitles();
 
