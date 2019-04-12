@@ -47,6 +47,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
 
     private final Context mContext;
     private final LayoutInflater mInflater;
+    private final int mMaxNumberGroupChildrenShown;
     private final boolean mIsGroupNotificationAdapter;
     // book keeping expanded notification groups
     private final List<String> mExpandedNotifications = new ArrayList<>();
@@ -66,6 +67,8 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public CarNotificationViewAdapter(Context context, boolean isGroupNotificationAdapter) {
         mContext = context;
         mInflater = LayoutInflater.from(context);
+        mMaxNumberGroupChildrenShown =
+                mContext.getResources().getInteger(R.integer.max_group_children_number);
         mIsGroupNotificationAdapter = isGroupNotificationAdapter;
         setHasStableIds(true);
         if (!mIsGroupNotificationAdapter) {
@@ -251,6 +254,11 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             } else {
                 return NotificationViewType.GROUP_COLLAPSED;
             }
+        } else if (mExpandedNotifications.contains(notificationGroup.getGroupKey())) {
+            // when there are 2 notifications left in the expanded notification and one of them is
+            // removed at that time the item type changes from group to normal and hence the
+            // notification should be removed from expanded notifications.
+            setExpanded(notificationGroup.getGroupKey(), false);
         }
 
         Notification notification =
@@ -323,6 +331,10 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     @Override
     public int getItemCount() {
         int itemCount = mNotifications.size();
+
+        if (mIsGroupNotificationAdapter && itemCount > mMaxNumberGroupChildrenShown) {
+            return mMaxNumberGroupChildrenShown;
+        }
 
         if (!mIsGroupNotificationAdapter && mCarUxRestrictions != null
                 && (mCarUxRestrictions.getActiveRestrictions()
@@ -397,6 +409,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      * Sets the current {@link CarUxRestrictions}.
      */
     public void setCarUxRestrictions(CarUxRestrictions carUxRestrictions) {
+        Log.d(TAG, "setCarUxRestrictions");
         mCarUxRestrictions = carUxRestrictions;
         notifyDataSetChanged();
     }
