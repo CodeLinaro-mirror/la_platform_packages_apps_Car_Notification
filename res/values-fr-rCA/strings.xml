@@ -18,6 +18,10 @@
 <resources xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:xliff="urn:oasis:names:tc:xliff:document:1.2">
     <string name="assist_action_play_label" msgid="6278705468288338172">"Lire"</string>
+    <string name="action_mute_short" msgid="5239851786101022633">"Ignorer"</string>
+    <string name="action_mute_long" msgid="670936611165098834">"Ignorer la conversation"</string>
+    <string name="action_unmute_short" msgid="7157822835069715986">"Réactiver"</string>
+    <string name="action_unmute_long" msgid="750697270532622459">"Réactiver la conversation"</string>
     <string name="action_canned_reply" msgid="4045960823021872834">"« Je conduis. »"</string>
     <string name="canned_reply_message" msgid="7959257272917598063">"Je suis en train de conduire."</string>
     <string name="toast_message_sent_success" msgid="1159956191974273064">"Message envoyé"</string>
@@ -25,7 +29,10 @@
     <string name="notifications" msgid="2865534625906329283">"Centre de notifications"</string>
     <string name="clear_all" msgid="1845314281571237722">"Tout effacer"</string>
     <string name="ellipsized_string" msgid="6993649229498857557">"…"</string>
-    <string name="unshown_count" msgid="3983441624645436587">"+ <xliff:g id="COUNT">%d</xliff:g>"</string>
+    <string name="show_more" msgid="7291378544926443344">"Afficher plus"</string>
+    <string name="show_less" msgid="7342677676229302829">"Afficher moins"</string>
+    <string name="show_count_more" msgid="480555295700318609">"Afficher <xliff:g id="COUNT">%d</xliff:g> de plus"</string>
+    <string name="message_unshown_count" msgid="2234421277246741233">" et <xliff:g id="COUNT">%d</xliff:g> de plus"</string>
     <plurals name="restricted_message_text" formatted="false" msgid="507312322886633308">
       <item quantity="one"><xliff:g id="COUNT">%d</xliff:g> nouveau message</item>
       <item quantity="other"><xliff:g id="COUNT">%d</xliff:g> nouveaux messages</item>
