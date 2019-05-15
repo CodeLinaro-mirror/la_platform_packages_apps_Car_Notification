@@ -23,6 +23,7 @@ import android.view.View;
 
 import com.android.car.notification.NotificationClickHandlerFactory;
 import com.android.car.notification.R;
+
 /**
  * Inbox notification view template that
  * displays a {@link android.app.Notification.InboxStyle} notification.
@@ -46,8 +47,9 @@ public class InboxNotificationViewHolder extends CarNotificationBaseViewHolder {
      * Binds a {@link StatusBarNotification} to an inbox style car notification template.
      */
     @Override
-    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
-        super.bind(statusBarNotification, isInGroup);
+    public void bind(StatusBarNotification statusBarNotification, boolean isInGroup,
+            boolean isHeadsUp) {
+        super.bind(statusBarNotification, isInGroup, isHeadsUp);
         bindBody(statusBarNotification);
         mHeaderView.bind(statusBarNotification, isInGroup);
         mActionsView.bind(mClickHandlerFactory, statusBarNotification);
