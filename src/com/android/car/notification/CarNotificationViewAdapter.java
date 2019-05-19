@@ -47,6 +47,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
 
     private final Context mContext;
     private final LayoutInflater mInflater;
+    private final int mMaxNumberGroupChildrenShown;
     private final boolean mIsGroupNotificationAdapter;
     // book keeping expanded notification groups
     private final List<String> mExpandedNotifications = new ArrayList<>();
@@ -66,6 +67,8 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public CarNotificationViewAdapter(Context context, boolean isGroupNotificationAdapter) {
         mContext = context;
         mInflater = LayoutInflater.from(context);
+        mMaxNumberGroupChildrenShown =
+                mContext.getResources().getInteger(R.integer.max_group_children_number);
         mIsGroupNotificationAdapter = isGroupNotificationAdapter;
         setHasStableIds(true);
         if (!mIsGroupNotificationAdapter) {
@@ -178,17 +181,18 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             case NotificationViewType.CAR_EMERGENCY: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 ((EmergencyNotificationViewHolder) holder)
-                        .bind(notification, /* isInGroup= */ false);
+                        .bind(notification, /* isInGroup= */ false, /* isHeadsUp= */ false);
                 break;
             }
             case NotificationViewType.MESSAGE: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 if (shouldRestrictMessagePreview()) {
                     ((MessageNotificationViewHolder) holder)
-                            .bindRestricted(notification, /* isInGroup= */ false);
+                            .bindRestricted(notification, /* isInGroup= */ false, /* isHeadsUp= */
+                                    false);
                 } else {
                     ((MessageNotificationViewHolder) holder)
-                            .bind(notification, /* isInGroup= */ false);
+                            .bind(notification, /* isInGroup= */ false, /* isHeadsUp= */ false);
                 }
                 break;
             }
@@ -196,38 +200,43 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 if (shouldRestrictMessagePreview()) {
                     ((MessageNotificationViewHolder) holder)
-                            .bindRestricted(notification, /* isInGroup= */ true);
+                            .bindRestricted(notification, /* isInGroup= */ true, /* isHeadsUp= */
+                                    false);
                 } else {
                     ((MessageNotificationViewHolder) holder)
-                            .bind(notification, /* isInGroup= */ true);
+                            .bind(notification, /* isInGroup= */ true, /* isHeadsUp= */ false);
                 }
                 break;
             }
             case NotificationViewType.PROGRESS: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 ((ProgressNotificationViewHolder) holder)
-                        .bind(notification, /* isInGroup= */ false);
+                        .bind(notification, /* isInGroup= */ false, false);
                 break;
             }
             case NotificationViewType.PROGRESS_IN_GROUP: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((ProgressNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true);
+                ((ProgressNotificationViewHolder) holder).bind(notification, /* isInGroup= */
+                        true, false);
                 break;
             }
             case NotificationViewType.INBOX: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((InboxNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false);
+                ((InboxNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false,
+                        /* isHeadsUp= */ false);
                 break;
             }
             case NotificationViewType.INBOX_IN_GROUP: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((InboxNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true);
+                ((InboxNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true,
+                        /* isHeadsUp= */ false);
                 break;
             }
             case NotificationViewType.CAR_INFORMATION_IN_GROUP:
             case NotificationViewType.BASIC_IN_GROUP: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((BasicNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true);
+                ((BasicNotificationViewHolder) holder).bind(notification, /* isInGroup= */ true,
+                        /* isHeadsUp= */ false);
                 break;
             }
             case NotificationViewType.CAR_WARNING:
@@ -235,7 +244,8 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             case NotificationViewType.BASIC:
             default: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((BasicNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false);
+                ((BasicNotificationViewHolder) holder).bind(notification, /* isInGroup= */ false,
+                        /* isHeadsUp= */ false);
                 break;
             }
         }
@@ -251,6 +261,11 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             } else {
                 return NotificationViewType.GROUP_COLLAPSED;
             }
+        } else if (mExpandedNotifications.contains(notificationGroup.getGroupKey())) {
+            // when there are 2 notifications left in the expanded notification and one of them is
+            // removed at that time the item type changes from group to normal and hence the
+            // notification should be removed from expanded notifications.
+            setExpanded(notificationGroup.getGroupKey(), false);
         }
 
         Notification notification =
@@ -324,9 +339,13 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public int getItemCount() {
         int itemCount = mNotifications.size();
 
+        if (mIsGroupNotificationAdapter && itemCount > mMaxNumberGroupChildrenShown) {
+            return mMaxNumberGroupChildrenShown;
+        }
+
         if (!mIsGroupNotificationAdapter && mCarUxRestrictions != null
                 && (mCarUxRestrictions.getActiveRestrictions()
-                    & CarUxRestrictions.UX_RESTRICTIONS_LIMIT_CONTENT) != 0) {
+                & CarUxRestrictions.UX_RESTRICTIONS_LIMIT_CONTENT) != 0) {
 
             int maxItemCount = mCarUxRestrictions.getMaxCumulativeContentItems();
 
@@ -397,6 +416,7 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      * Sets the current {@link CarUxRestrictions}.
      */
     public void setCarUxRestrictions(CarUxRestrictions carUxRestrictions) {
+        Log.d(TAG, "setCarUxRestrictions");
         mCarUxRestrictions = carUxRestrictions;
         notifyDataSetChanged();
     }

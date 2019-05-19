@@ -16,11 +16,12 @@
 package com.android.car.notification.template;
 
 import android.annotation.ColorInt;
-import android.annotation.Nullable;
 import android.app.Notification;
+import android.car.userlib.CarUserManagerHelper;
 import android.content.Context;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
+import android.content.res.TypedArray;
 import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.service.notification.StatusBarNotification;
@@ -33,6 +34,8 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 
+import androidx.annotation.Nullable;
+
 import com.android.car.notification.R;
 
 /**
@@ -43,9 +46,11 @@ public class CarNotificationHeaderView extends LinearLayout {
     private static final String TAG = "car_notification_header";
 
     private final PackageManager mPackageManager;
+    private final CarUserManagerHelper mCarUserManagerHelper;
     private final int mDefaultTextColor;
     private final String mSeparatorText;
 
+    private boolean mOnlyShowIcon;
     private ImageView mIconView;
     private TextView mHeaderTextView;
     private DateTimeView mTimeView;
@@ -56,22 +61,35 @@ public class CarNotificationHeaderView extends LinearLayout {
 
     public CarNotificationHeaderView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        init(attrs);
     }
 
     public CarNotificationHeaderView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        init(attrs);
     }
 
     public CarNotificationHeaderView(Context context, AttributeSet attrs, int defStyleAttr,
             int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+        init(attrs);
     }
 
     {
         mPackageManager = getContext().getPackageManager();
+        mCarUserManagerHelper = new CarUserManagerHelper(getContext());
         mDefaultTextColor = getContext().getColor(R.color.primary_text_color);
         mSeparatorText = getContext().getString(R.string.header_text_separator);
         inflate(getContext(), R.layout.car_notification_header_view, this);
+    }
+
+    private void init(AttributeSet attrs) {
+        TypedArray attributes =
+                getContext().obtainStyledAttributes(attrs, R.styleable.CarNotificationHeaderView);
+        mOnlyShowIcon =
+                attributes.getBoolean(R.styleable.CarNotificationHeaderView_onlyShowIcon,
+                        /* defValue= */ false);
+        attributes.recycle();
     }
 
     @Override
@@ -87,7 +105,7 @@ public class CarNotificationHeaderView extends LinearLayout {
      * Binds the notification header that contains the issuer app icon and name.
      *
      * @param statusBarNotification the notification to be bound.
-     * @param isInGroup             whether this notification is part of a grouped notification.
+     * @param isInGroup whether this notification is part of a grouped notification.
      */
     public void bind(StatusBarNotification statusBarNotification, boolean isInGroup) {
         if (isInGroup) {
@@ -97,12 +115,21 @@ public class CarNotificationHeaderView extends LinearLayout {
         }
 
         Notification notification = statusBarNotification.getNotification();
+
         Context packageContext = statusBarNotification.getPackageContext(getContext());
 
         // app icon
         mIconView.setVisibility(View.VISIBLE);
         Drawable drawable = notification.getSmallIcon().loadDrawable(packageContext);
         mIconView.setImageDrawable(drawable);
+
+        if (mOnlyShowIcon) {
+            mIconView.setLayoutParams(
+                    new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+            mHeaderTextView.setVisibility(View.GONE);
+            mTimeView.setVisibility(View.GONE);
+            return;
+        }
 
         StringBuilder stringBuilder = new StringBuilder();
 
@@ -138,8 +165,8 @@ public class CarNotificationHeaderView extends LinearLayout {
      * Binds the notification header that contains the issuer app icon and name.
      *
      * @param statusBarNotification the notification to be bound.
-     * @param mediaForegroundColor  the foreground color used for the texts and icons of media
-     *                              notifications.
+     * @param mediaForegroundColor the foreground color used for the texts and icons of media
+     * notifications.
      */
     public void bindWithMediaColor(
             StatusBarNotification statusBarNotification, @ColorInt int mediaForegroundColor) {
@@ -197,9 +224,10 @@ public class CarNotificationHeaderView extends LinearLayout {
     private String loadHeaderAppName(String packageName) {
         ApplicationInfo info;
         try {
-            info = mPackageManager.getApplicationInfo(packageName, 0);
+            info = mPackageManager.getApplicationInfoAsUser(packageName.trim(), /* flags= */ 0,
+                    mCarUserManagerHelper.getCurrentForegroundUserId());
         } catch (PackageManager.NameNotFoundException e) {
-            Log.e(TAG, "Error fetching app name in car notification header");
+            Log.e(TAG, "Error fetching app name in car notification header" + e);
             return null;
         }
         return String.valueOf(mPackageManager.getApplicationLabel(info));

@@ -20,7 +20,10 @@ import android.content.Context;
 import android.os.Handler;
 import android.service.notification.StatusBarNotification;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.FrameLayout;
+
+import com.android.car.notification.template.CarNotificationBaseViewHolder;
 
 /**
  * Class to store the state for Heads Up Notifications. Each notification will have its own post
@@ -32,19 +35,16 @@ public class HeadsUpEntry {
     private final StatusBarNotification mStatusBarNotification;
     private long mPostTime;
     private final Handler mHandler;
-    private FrameLayout mFrameLayout;
-    private View mScrimView;
-    protected boolean isNew;
-    protected boolean isAlertingAgain;
+    protected boolean isAlertAgain;
+    protected boolean isNewHeadsUp;
     private View mNotificationView;
+    private NotificationClickHandlerFactory mClickHandlerFactory;
+    private CarNotificationBaseViewHolder mCarNotificationBaseViewHolder;
 
-    HeadsUpEntry(StatusBarNotification statusBarNotification, Context context) {
+    HeadsUpEntry(StatusBarNotification statusBarNotification) {
         mStatusBarNotification = statusBarNotification;
         mPostTime = calculatePostTime();
         mHandler = new Handler();
-        mScrimView = new View(context);
-        mScrimView.setBackgroundResource(R.drawable.headsup_scrim);
-        mScrimView.setVisibility(View.GONE);
     }
 
     /**
@@ -76,28 +76,9 @@ public class HeadsUpEntry {
         return mHandler;
     }
 
-    /**
-     * Frame layout is used to generate and update the data within the heads up notification. Each
-     * notification can have different height, layout and data and hence each Heads up notification
-     * requires its own layout.
-     */
-    protected void setFrameLayout(FrameLayout frameLayout) {
-        mFrameLayout = frameLayout;
-    }
-
-    protected FrameLayout getFrameLayout() {
-        return mFrameLayout;
-    }
 
     protected long getPostTime() {
         return mPostTime;
-    }
-
-    /**
-     * View that controls the scrim for each heads up notification.
-     */
-    protected View getScrimView() {
-        return mScrimView;
     }
 
     /**
@@ -109,5 +90,22 @@ public class HeadsUpEntry {
 
     protected View getNotificationView() {
         return mNotificationView;
+    }
+
+    protected NotificationClickHandlerFactory getClickHandlerFactory() {
+        return mClickHandlerFactory;
+    }
+
+    protected void setClickHandlerFactory(
+            NotificationClickHandlerFactory clickHandlerFactory) {
+        mClickHandlerFactory = clickHandlerFactory;
+    }
+
+    protected void setViewHolder(CarNotificationBaseViewHolder viewHolder) {
+        mCarNotificationBaseViewHolder = viewHolder;
+    }
+
+    protected CarNotificationBaseViewHolder getViewHolder() {
+        return mCarNotificationBaseViewHolder;
     }
 }

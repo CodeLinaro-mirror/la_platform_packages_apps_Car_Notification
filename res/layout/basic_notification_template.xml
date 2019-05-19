@@ -20,21 +20,49 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content">
 
-    <!-- Note: the width is 0dp because ColumnCardView will automatically set a width based
-         on the number of columns it should take up. See ColumnCardView for more details. -->
-    <androidx.car.widget.ColumnCardView
-        android:id="@+id/column_card_view"
-        android:layout_width="0dp"
+    <androidx.cardview.widget.CardView
+        android:id="@+id/card_view"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_gravity="center_horizontal"
+        android:layout_marginEnd="@dimen/notification_card_margin_horizontal"
+        android:layout_marginStart="@dimen/notification_card_margin_horizontal"
         app:cardBackgroundColor="?android:attr/colorPrimary"
-        app:columnSpan="@integer/notification_center_column_number"
         app:cardCornerRadius="@dimen/notification_card_radius">
 
-        <include
-            layout="@layout/basic_notification_template_inner"
+        <RelativeLayout
+            xmlns:android="http://schemas.android.com/apk/res/android"
+            android:id="@+id/inner_template_view"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"/>
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/car_notification_card_inner_top_margin">
 
-    </androidx.car.widget.ColumnCardView>
+            <com.android.car.notification.template.CarNotificationHeaderView
+                android:id="@+id/notification_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_alignParentStart="true"
+                android:layout_alignParentTop="true"
+                android:layout_marginBottom="@dimen/card_header_margin_bottom"
+                android:layout_marginEnd="@dimen/card_end_margin"
+                android:layout_marginStart="@dimen/card_start_margin"
+                android:minHeight="@dimen/card_min_top_padding"
+                app:onlyShowIcon="false"/>
+
+            <com.android.car.notification.template.CarNotificationBodyView
+                android:id="@+id/notification_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/notification_header"
+                android:layout_marginBottom="@dimen/card_body_margin_bottom"
+                app:showBigIcon="true"/>
+
+            <com.android.car.notification.template.CarNotificationActionsView
+                android:id="@+id/notification_actions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/notification_body"
+                android:minHeight="@dimen/card_min_bottom_padding"/>
+        </RelativeLayout>
+    </androidx.cardview.widget.CardView>
 </FrameLayout>

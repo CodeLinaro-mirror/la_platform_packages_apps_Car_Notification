@@ -24,6 +24,9 @@ import android.os.UserHandle;
 import android.service.notification.StatusBarNotification;
 import android.widget.FrameLayout;
 
+import com.android.car.notification.template.BasicNotificationViewHolder;
+import com.android.car.notification.template.CarNotificationBaseViewHolder;
+
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -62,13 +65,13 @@ public class HeadsUpEntryTest {
         mNotification1 = new StatusBarNotification(PKG_1, OP_PKG,
                 ID, TAG, UID, INITIAL_PID, mNotificationBuilder1.build(), USER_HANDLE,
                 OVERRIDE_GROUP_KEY, POST_TIME);
-        mHeadsUpEntry = new HeadsUpEntry(mNotification1, mContext);
+        mHeadsUpEntry = new HeadsUpEntry(mNotification1);
     }
 
     @Test
     public void headsUpEntry_shouldInitializePostTime() {
         long currentTme = System.currentTimeMillis();
-        mHeadsUpEntry = new HeadsUpEntry(mNotification1, mContext);
+        mHeadsUpEntry = new HeadsUpEntry(mNotification1);
 
         assertThat(mHeadsUpEntry.getPostTime()).isNotEqualTo(0);
         assertThat(currentTme).isAtMost(mHeadsUpEntry.getPostTime());
@@ -93,19 +96,8 @@ public class HeadsUpEntryTest {
     }
 
     @Test
-    public void setFrameLayout_shouldSetFrameLayout() {
-        mHeadsUpEntry = new HeadsUpEntry(mNotification1, mContext);
-
-        assertThat(mHeadsUpEntry.getFrameLayout()).isNull();
-
-        mHeadsUpEntry.setFrameLayout(new FrameLayout(mContext));
-
-        assertThat(mHeadsUpEntry.getFrameLayout()).isNotNull();
-    }
-
-    @Test
     public void setNotificationView_shouldSetNotificationView() {
-        mHeadsUpEntry = new HeadsUpEntry(mNotification1, mContext);
+        mHeadsUpEntry = new HeadsUpEntry(mNotification1);
 
         assertThat(mHeadsUpEntry.getNotificationView()).isNull();
 
@@ -115,9 +107,14 @@ public class HeadsUpEntryTest {
     }
 
     @Test
-    public void getScrimView_shouldNoBeNull() {
-        mHeadsUpEntry = new HeadsUpEntry(mNotification1, mContext);
+    public void setViewHolder_shouldSetViewHolder() {
+        mHeadsUpEntry = new HeadsUpEntry(mNotification1);
 
-        assertThat(mHeadsUpEntry.getScrimView()).isNotNull();
+        assertThat(mHeadsUpEntry.getViewHolder()).isNull();
+
+        mHeadsUpEntry.setViewHolder(
+                new BasicNotificationViewHolder(new FrameLayout(mContext), null));
+
+        assertThat(mHeadsUpEntry.getViewHolder()).isNotNull();
     }
 }

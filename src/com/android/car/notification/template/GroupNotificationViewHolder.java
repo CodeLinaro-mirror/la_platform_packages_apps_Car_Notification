@@ -21,7 +21,8 @@ import android.graphics.Paint;
 import android.graphics.drawable.Drawable;
 import android.service.notification.StatusBarNotification;
 import android.view.View;
-import android.widget.Button;
+import android.widget.ImageView;
+import android.widget.TextView;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -40,11 +41,10 @@ import java.util.List;
  * ViewHolder that binds a list of notifications as a grouped notification.
  */
 public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
-    private final NotificationClickHandlerFactory mClickHandlerFactory;
     private final Context mContext;
     private final View mHeaderDividerView;
-    private final Button mToggleButton;
-    private final View mCardView;
+    private final ImageView mToggleIcon;
+    private final TextView mExpansionFooterView;
     private final RecyclerView mNotificationListView;
     private final CarNotificationViewAdapter mAdapter;
     private final Drawable mExpandDrawable;
@@ -52,31 +52,29 @@ public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
     private final Paint mPaint;
     private final int mDividerHeight;
     private final CarNotificationHeaderView mGroupHeaderView;
+    private final View mTouchInterceptorView;
     private StatusBarNotification mSummaryNotification;
     private NotificationGroup mNotificationGroup;
 
     public GroupNotificationViewHolder(
             View view, NotificationClickHandlerFactory clickHandlerFactory) {
         super(view, clickHandlerFactory);
-        mClickHandlerFactory = clickHandlerFactory;
         mContext = view.getContext();
 
         mGroupHeaderView = view.findViewById(R.id.group_header);
         mHeaderDividerView = view.findViewById(R.id.header_divider);
-        mCardView = view.findViewById(R.id.column_card_view);
-        mToggleButton = view.findViewById(R.id.group_toggle_button);
+        mToggleIcon = view.findViewById(R.id.group_toggle_icon);
+        mExpansionFooterView = view.findViewById(R.id.expansion_footer);
         mNotificationListView = view.findViewById(R.id.notification_list);
+        mTouchInterceptorView = view.findViewById(R.id.touch_interceptor_view);
 
-        int carAccentColor = mContext.getColor(R.color.notification_accent_color);
         mExpandDrawable = mContext.getDrawable(R.drawable.expand_more);
-        mExpandDrawable.setTint(carAccentColor);
         mCollapseDrawable = mContext.getDrawable(R.drawable.expand_less);
-        mCollapseDrawable.setTint(carAccentColor);
 
         mPaint = new Paint();
         mPaint.setColor(mContext.getColor(R.color.notification_list_divider_color));
         mDividerHeight = mContext.getResources().getDimensionPixelSize(
-                R.dimen.car_list_divider_height);
+                R.dimen.notification_list_divider_height);
 
         mNotificationListView.setLayoutManager(new LinearLayoutManager(mContext));
         mNotificationListView.addItemDecoration(new GroupedNotificationItemDecoration());
@@ -120,19 +118,6 @@ public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
         // the view pool is created and stored in the root adapter
         mNotificationListView.setRecycledViewPool(parentAdapter.getViewPool());
 
-        // expand button
-        updateToggleButton(group.getChildCount(), isExpanded);
-        mToggleButton.setOnClickListener(
-                view -> {
-                    boolean isExpanding = !isExpanded;
-                    parentAdapter.setExpanded(group.getGroupKey(), isExpanding);
-                    mAdapter.notifyDataSetChanged();
-
-                    // When expanding, do not set an onClickListener on the overall card view.
-                    mCardView.setOnClickListener(isExpanding
-                            ? null : mClickHandlerFactory.getClickHandler(mSummaryNotification));
-                });
-
         // notification cards
         List<NotificationGroup> list = new ArrayList<>();
         if (isExpanded) {
@@ -160,23 +145,46 @@ public class GroupNotificationViewHolder extends CarNotificationBaseViewHolder {
             list.add(newGroup);
         }
         mAdapter.setNotifications(list);
+
+        updateExpansionIcon(group.getChildCount(), isExpanded);
+        updateOnClickListener(parentAdapter, group, isExpanded);
     }
 
-    private void updateToggleButton(int childCount, boolean isExpanded) {
+    private void updateExpansionIcon(int childCount, boolean isExpanded) {
+        // expansion button in the group header
         if (childCount == 0) {
-            mToggleButton.setVisibility(View.GONE);
+            mToggleIcon.setVisibility(View.GONE);
+            return;
+        }
+        mToggleIcon.setVisibility(View.VISIBLE);
+        mToggleIcon.setImageDrawable(isExpanded ? mCollapseDrawable : mExpandDrawable);
+
+        // expansion button in the group footer
+        if (isExpanded) {
+            mExpansionFooterView.setText(mContext.getString(R.string.show_less));
             return;
         }
 
-        mToggleButton.setVisibility(View.VISIBLE);
+        int unshownCount = childCount - 2;
+        mExpansionFooterView.setText(
+                unshownCount <= 0
+                        ? mContext.getString(R.string.show_more)
+                        : mContext.getString(R.string.show_count_more, unshownCount));
+    }
 
-        if (isExpanded) {
-            mToggleButton.setCompoundDrawablesWithIntrinsicBounds(
-                    mCollapseDrawable, null, null, null);
-        } else {
-            mToggleButton.setCompoundDrawablesWithIntrinsicBounds(
-                    mExpandDrawable, null, null, null);
-        }
+    private void updateOnClickListener(
+            CarNotificationViewAdapter parentAdapter, NotificationGroup group, boolean isExpanded) {
+
+        View.OnClickListener expansionClickListener = view -> {
+            boolean isExpanding = !isExpanded;
+            parentAdapter.setExpanded(group.getGroupKey(), isExpanding);
+            mAdapter.notifyDataSetChanged();
+        };
+
+        mGroupHeaderView.setOnClickListener(expansionClickListener);
+        mExpansionFooterView.setOnClickListener(expansionClickListener);
+        mTouchInterceptorView.setOnClickListener(expansionClickListener);
+        mTouchInterceptorView.setVisibility(isExpanded ? View.GONE : View.VISIBLE);
     }
 
     @Override

@@ -25,14 +25,20 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 
+import com.android.car.assist.client.CarAssistUtils;
+
 import java.util.ArrayList;
-import java.util.Arrays;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * NotificationListenerService that fetches all notifications from system.
@@ -47,29 +53,34 @@ public class CarNotificationListener extends NotificationListenerService {
     private Handler mHandler;
     private RankingMap mRankingMap;
     private CarHeadsUpNotificationManager mHeadsUpManager;
-    private List<StatusBarNotification> mNotifications = new ArrayList<>();
+    private NotificationDataManager mNotificationDataManager;
+
+    /**
+     * Map that contains all the active notifications. These notifications may or may not be
+     * visible to the user if they get filtered out. The only time these will be removed from the
+     * map is when the {@llink NotificationListenerService} calls the onNotificationRemoved method.
+     * New notifications will be added to the map from {@link CarHeadsUpNotificationManager}.
+     */
+    private Map<String, StatusBarNotification> mActiveNotifications = new HashMap<>();
 
     /**
      * Call this if to register this service as a system service and connect to HUN. This is useful
      * if the notification service is being used as a lib instead of a standalone app. The
      * standalone app version has a manifest entry that will have the same effect.
-     *
-     * @param context Context required for registering the service.
+     *  @param context Context required for registering the service.
      * @param carUxRestrictionManagerWrapper will have the heads up manager registered with it.
-     * @param clickHandlerFactory used to construct Heads up manager
      */
     public void registerAsSystemService(Context context,
             CarUxRestrictionManagerWrapper carUxRestrictionManagerWrapper,
-            NotificationClickHandlerFactory clickHandlerFactory) {
+            CarHeadsUpNotificationManager carHeadsUpNotificationManager,
+            NotificationDataManager notificationDataManager) {
         try {
+        mNotificationDataManager = notificationDataManager;
             registerAsSystemService(context,
                     new ComponentName(context.getPackageName(), getClass().getCanonicalName()),
                     ActivityManager.getCurrentUser());
-            // Note: The first call to CarHeadsUpNotificationManager.getInstance will build the
-            // UI thus we do it here to be sure it's ready.
-            mHeadsUpManager = CarHeadsUpNotificationManager.getInstance(context,
-                    clickHandlerFactory);
-            carUxRestrictionManagerWrapper.setCarHeadsUpNotificationManager(mHeadsUpManager);
+            mHeadsUpManager = carHeadsUpNotificationManager;
+            carUxRestrictionManagerWrapper.setCarHeadsUpNotificationManager(carHeadsUpNotificationManager);
         } catch (RemoteException e) {
             Log.e(TAG, "Unable to register notification listener", e);
         }
@@ -78,9 +89,13 @@ public class CarNotificationListener extends NotificationListenerService {
     @Override
     public void onCreate() {
         super.onCreate();
+        mNotificationDataManager = new NotificationDataManager();
         NotificationApplication app = (NotificationApplication) getApplication();
-        mHeadsUpManager = CarHeadsUpNotificationManager.getInstance(/* context= */this,
-                app.getClickHandlerFactory());
+        app.getClickHandlerFactory().setNotificationDataManager(mNotificationDataManager);
+
+        mHeadsUpManager = new CarHeadsUpNotificationManager(/* context= */this,
+                app.getClickHandlerFactory(),
+                mNotificationDataManager);
         app.getCarUxRestrictionWrapper().setCarHeadsUpNotificationManager(mHeadsUpManager);
     }
 
@@ -92,17 +107,21 @@ public class CarNotificationListener extends NotificationListenerService {
 
     @Override
     public void onNotificationPosted(StatusBarNotification sbn, RankingMap rankingMap) {
-        mNotifications.removeIf(notification ->
-                CarNotificationDiff.sameNotificationKey(notification, sbn));
-        mNotifications.add(sbn);
+        Log.d(TAG, "onNotificationPosted: " + sbn);
+        // Notifications should only be shown for the current user and the the notifications from
+        // the system when CarNotification is running as SystemUI component.
+        if (sbn.getUser().getIdentifier() != ActivityManager.getCurrentUser()
+                && sbn.getUser().getIdentifier() != UserHandle.USER_ALL) {
+            return;
+        }
         mRankingMap = rankingMap;
         onNotificationAdded(sbn);
     }
 
     @Override
     public void onNotificationRemoved(StatusBarNotification sbn) {
-        mNotifications.removeIf(notification ->
-                CarNotificationDiff.sameNotificationKey(notification, sbn));
+        Log.d(TAG, "onNotificationRemoved: " + sbn);
+        mActiveNotifications.remove(sbn.getKey());
         mHeadsUpManager.maybeRemoveHeadsUp(sbn);
         onNotificationChanged();
     }
@@ -110,8 +129,7 @@ public class CarNotificationListener extends NotificationListenerService {
     @Override
     public void onNotificationRankingUpdate(RankingMap rankingMap) {
         mRankingMap = rankingMap;
-        for (int i = 0; i < mNotifications.size(); i++) {
-            StatusBarNotification sbn = mNotifications.get(i);
+        for (StatusBarNotification sbn : mActiveNotifications.values()) {
             if (!mRankingMap.getRanking(sbn.getKey(), mTemporaryRanking)) {
                 continue;
             }
@@ -142,7 +160,7 @@ public class CarNotificationListener extends NotificationListenerService {
      * @return a list of all active notifications.
      */
     List<StatusBarNotification> getNotifications() {
-        return mNotifications;
+        return new ArrayList<>(mActiveNotifications.values());
     }
 
     @Override
@@ -152,7 +170,8 @@ public class CarNotificationListener extends NotificationListenerService {
 
     @Override
     public void onListenerConnected() {
-        mNotifications = new ArrayList<>(Arrays.asList(getActiveNotifications()));
+        mActiveNotifications = Stream.of(getActiveNotifications()).collect(
+                Collectors.toMap(StatusBarNotification::getKey, sbn -> sbn));
         mRankingMap = super.getCurrentRanking();
     }
 
@@ -174,8 +193,10 @@ public class CarNotificationListener extends NotificationListenerService {
     }
 
     private void onNotificationAdded(StatusBarNotification sbn) {
-        mHeadsUpManager.maybeShowHeadsUp(sbn, getCurrentRanking());
-
+        if (CarAssistUtils.isCarCompatibleMessagingNotification(sbn)) {
+            mNotificationDataManager.addNewMessageNotification(sbn);
+        }
+        mHeadsUpManager.maybeShowHeadsUp(sbn, getCurrentRanking(), mActiveNotifications);
         if (mHandler == null) {
             return;
         }
