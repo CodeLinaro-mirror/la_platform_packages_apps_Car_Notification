@@ -30,6 +30,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 
 import com.android.car.notification.template.MessageNotificationViewHolder;
+import com.android.internal.annotations.VisibleForTesting;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -62,7 +63,8 @@ public class PreprocessingManager {
     }
 
     /**
-     * Process the given notifications.
+     * Process the given notifications. In order for DiffUtil to work, the adapter needs a new
+     * data object each time it updates, therefore wrapping the return value in a new list.
      *
      * @param showLessImportantNotifications whether less important notifications should be shown.
      * @param notifications the list of notifications to be processed.
@@ -89,7 +91,7 @@ public class PreprocessingManager {
             boolean showLessImportantNotifications,
             List<StatusBarNotification> notifications,
             NotificationListenerService.RankingMap rankingMap) {
-
+        Log.d(TAG, "Number of notifications before filtering: " + notifications.size());
         // remove less important foreground service notifications for car
         if (!showLessImportantNotifications) {
             notifications.removeIf(
@@ -119,7 +121,7 @@ public class PreprocessingManager {
                                 || Notification.CATEGORY_NAVIGATION.equals(notification.category);
                     });
         }
-
+        Log.d(TAG, "Number of notifications after filtering: " + notifications.size());
         return notifications;
     }
 
@@ -181,14 +183,21 @@ public class PreprocessingManager {
 
     /**
      * Group notifications that have the same group key.
-     * Never groups system notifications nor car emergency notifications.
+     *
+     * <p> Automatically generated group summaries that contains no child notifications are removed.
+     * This can happen if a notification group only contains less important notifications that are
+     * filtered out in the previous {@link #filter} step.
+     *
+     * <p> A group of child notifications without a summary notification will not be grouped.
      *
      * @param list list of ungrouped {@link StatusBarNotification}s.
      * @return list of grouped notifications as {@link NotificationGroup}s.
      */
-    private List<NotificationGroup> group(List<StatusBarNotification> list) {
+    @VisibleForTesting
+    List<NotificationGroup> group(List<StatusBarNotification> list) {
         SortedMap<String, NotificationGroup> groupedNotifications = new TreeMap<>();
 
+        // First pass: group all notifications according to their groupKey.
         for (int i = 0; i < list.size(); i++) {
             StatusBarNotification statusBarNotification = list.get(i);
             Notification notification = statusBarNotification.getNotification();
@@ -206,9 +215,37 @@ public class PreprocessingManager {
             }
         }
 
-        // In order for DiffUtil to work, the adapter needs a new data object each time it
-        // updates, therefore wrapping the return value in a new list.
-        return new ArrayList(groupedNotifications.values());
+        // Second pass: remove automatically generated group summary if it contains no child
+        // notifications. This can happen if a notification group only contains less important
+        // notifications that are filtered out in the previous filter step.
+        List<NotificationGroup> groupList = new ArrayList<>(groupedNotifications.values());
+        groupList.removeIf(
+                notificationGroup -> {
+                    StatusBarNotification summaryNotification =
+                            notificationGroup.getGroupSummaryNotification();
+                    return notificationGroup.getChildCount() == 0
+                            && summaryNotification != null
+                            && summaryNotification.getOverrideGroupKey() != null;
+                });
+
+        // Third pass: a notification group without a group summary should be restored back into
+        // individual notifications.
+        List<NotificationGroup> validGroupList = new ArrayList<>();
+        groupList.forEach(
+                group -> {
+                    if (group.getChildCount() > 1 && group.getGroupSummaryNotification() == null) {
+                        group.getChildNotifications().forEach(
+                                notification -> {
+                                    NotificationGroup newGroup = new NotificationGroup();
+                                    newGroup.addNotification(notification);
+                                    validGroupList.add(newGroup);
+                                });
+                    } else {
+                        validGroupList.add(group);
+                    }
+                });
+
+        return validGroupList;
     }
 
     /**
