@@ -17,7 +17,6 @@
 package com.android.car.notification.template;
 
 import android.annotation.ColorInt;
-import android.app.Notification;
 import android.content.Context;
 import android.service.notification.StatusBarNotification;
 import android.view.View;
@@ -37,7 +36,6 @@ import java.util.List;
 public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewHolder {
     private final TextView mTitle1View;
     private final TextView mTitle2View;
-    private final TextView mUnshownCountView;
     private final Context mContext;
     @ColorInt
     private final int mCardBackgroundColor;
@@ -58,7 +56,6 @@ public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewH
         mDefaultTextColor = ThemesUtil.getAttrColor(mContext, android.R.attr.textColorPrimary);
         mTitle1View = view.findViewById(R.id.child_notification_title_1);
         mTitle2View = view.findViewById(R.id.child_notification_title_2);
-        mUnshownCountView = view.findViewById(R.id.unshown_count);
     }
 
     /**
@@ -71,7 +68,7 @@ public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewH
      */
     public void bind(NotificationGroup notificationGroup) {
         // isInGroup is always true for group summaries
-        super.bind(notificationGroup.getSingleNotification(), /* isInGroup= */ true);
+        super.bind(notificationGroup.getSingleNotification(), /* isInGroup= */ true, false);
 
         List<String> titles = notificationGroup.getChildTitles();
 
@@ -86,21 +83,6 @@ public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewH
         }
         mTitle2View.setVisibility(View.VISIBLE);
         mTitle2View.setText(titles.get(1));
-
-        int unshownCount = titles.size() - 2;
-        if (unshownCount > 0) {
-            mUnshownCountView.setVisibility(View.VISIBLE);
-            mUnshownCountView.setText(
-                    mContext.getString(R.string.unshown_count, unshownCount));
-
-            Notification notification = notificationGroup.getSingleNotification().getNotification();
-            // optional color
-            if (notification.color != Notification.COLOR_DEFAULT) {
-                int calculatedColor = NotificationColorUtil.resolveContrastColor(
-                        notification.color, mCardBackgroundColor);
-                mUnshownCountView.setTextColor(calculatedColor);
-            }
-        }
     }
 
     /**
@@ -114,9 +96,5 @@ public class GroupSummaryNotificationViewHolder extends CarNotificationBaseViewH
 
         mTitle2View.setText(null);
         mTitle2View.setVisibility(View.GONE);
-
-        mUnshownCountView.setText(null);
-        mUnshownCountView.setVisibility(View.GONE);
-        mUnshownCountView.setTextColor(mDefaultTextColor);
     }
 }

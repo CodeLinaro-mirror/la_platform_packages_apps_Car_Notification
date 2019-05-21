@@ -17,7 +17,6 @@ package com.android.car.notification;
 
 import android.annotation.Nullable;
 import android.app.ActivityManager;
-import android.app.Notification;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -30,6 +29,8 @@ import android.os.UserHandle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
+
+import com.android.car.assist.client.CarAssistUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -52,6 +53,8 @@ public class CarNotificationListener extends NotificationListenerService {
     private Handler mHandler;
     private RankingMap mRankingMap;
     private CarHeadsUpNotificationManager mHeadsUpManager;
+    private NotificationDataManager mNotificationDataManager;
+
     /**
      * Map that contains all the active notifications. These notifications may or may not be
      * visible to the user if they get filtered out. The only time these will be removed from the
@@ -64,23 +67,20 @@ public class CarNotificationListener extends NotificationListenerService {
      * Call this if to register this service as a system service and connect to HUN. This is useful
      * if the notification service is being used as a lib instead of a standalone app. The
      * standalone app version has a manifest entry that will have the same effect.
-     *
-     * @param context Context required for registering the service.
+     *  @param context Context required for registering the service.
      * @param carUxRestrictionManagerWrapper will have the heads up manager registered with it.
-     * @param clickHandlerFactory used to construct Heads up manager
      */
     public void registerAsSystemService(Context context,
             CarUxRestrictionManagerWrapper carUxRestrictionManagerWrapper,
-            NotificationClickHandlerFactory clickHandlerFactory) {
+            CarHeadsUpNotificationManager carHeadsUpNotificationManager,
+            NotificationDataManager notificationDataManager) {
         try {
+        mNotificationDataManager = notificationDataManager;
             registerAsSystemService(context,
                     new ComponentName(context.getPackageName(), getClass().getCanonicalName()),
                     ActivityManager.getCurrentUser());
-            // Note: The first call to CarHeadsUpNotificationManager.getInstance will build the
-            // UI thus we do it here to be sure it's ready.
-            mHeadsUpManager = CarHeadsUpNotificationManager.getInstance(context,
-                    clickHandlerFactory);
-            carUxRestrictionManagerWrapper.setCarHeadsUpNotificationManager(mHeadsUpManager);
+            mHeadsUpManager = carHeadsUpNotificationManager;
+            carUxRestrictionManagerWrapper.setCarHeadsUpNotificationManager(carHeadsUpNotificationManager);
         } catch (RemoteException e) {
             Log.e(TAG, "Unable to register notification listener", e);
         }
@@ -89,9 +89,13 @@ public class CarNotificationListener extends NotificationListenerService {
     @Override
     public void onCreate() {
         super.onCreate();
+        mNotificationDataManager = new NotificationDataManager();
         NotificationApplication app = (NotificationApplication) getApplication();
-        mHeadsUpManager = CarHeadsUpNotificationManager.getInstance(/* context= */this,
-                app.getClickHandlerFactory());
+        app.getClickHandlerFactory().setNotificationDataManager(mNotificationDataManager);
+
+        mHeadsUpManager = new CarHeadsUpNotificationManager(/* context= */this,
+                app.getClickHandlerFactory(),
+                mNotificationDataManager);
         app.getCarUxRestrictionWrapper().setCarHeadsUpNotificationManager(mHeadsUpManager);
     }
 
@@ -189,6 +193,9 @@ public class CarNotificationListener extends NotificationListenerService {
     }
 
     private void onNotificationAdded(StatusBarNotification sbn) {
+        if (CarAssistUtils.isCarCompatibleMessagingNotification(sbn)) {
+            mNotificationDataManager.addNewMessageNotification(sbn);
+        }
         mHeadsUpManager.maybeShowHeadsUp(sbn, getCurrentRanking(), mActiveNotifications);
         if (mHandler == null) {
             return;

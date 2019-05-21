@@ -17,6 +17,10 @@ package com.android.car.notification.template;
 
 import android.app.Notification;
 import android.content.Context;
+import android.content.res.TypedArray;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.drawable.Drawable;
 import android.service.notification.StatusBarNotification;
 import android.util.AttributeSet;
 import android.view.View;
@@ -25,6 +29,7 @@ import android.widget.RelativeLayout;
 
 import com.android.car.assist.client.CarAssistUtils;
 import com.android.car.notification.NotificationClickHandlerFactory;
+import com.android.car.notification.NotificationDataManager;
 import com.android.car.notification.R;
 
 import java.util.ArrayList;
@@ -40,8 +45,12 @@ public class CarNotificationActionsView extends RelativeLayout {
     // https://developer.android.com/reference/android/app/Notification.Builder.html#addAction
     private static final int MAX_NUM_ACTIONS = 3;
     private static final int PLAY_MESSAGE_ACTION_BUTTON_INDEX = 0;
+    private static final int MUTE_MESSAGE_ACTION_BUTTON_INDEX = 1;
 
     private final List<Button> mActionButtons = new ArrayList<>();
+
+    private boolean mIsCategoryCall;
+    private Context mContext;
 
     public CarNotificationActionsView(Context context) {
         super(context);
@@ -49,19 +58,33 @@ public class CarNotificationActionsView extends RelativeLayout {
 
     public CarNotificationActionsView(Context context, AttributeSet attrs) {
         super(context, attrs);
+        mContext = context;
+        init(attrs);
     }
 
     public CarNotificationActionsView(Context context, AttributeSet attrs, int defStyleAttr) {
         super(context, attrs, defStyleAttr);
+        mContext = context;
+        init(attrs);
     }
 
     public CarNotificationActionsView(Context context, AttributeSet attrs, int defStyleAttr,
             int defStyleRes) {
         super(context, attrs, defStyleAttr, defStyleRes);
+        mContext = context;
+        init(attrs);
     }
 
     {
         inflate(getContext(), R.layout.car_notification_actions_view, /* root= */ this);
+    }
+
+    private void init(AttributeSet attrs) {
+        TypedArray attributes =
+                getContext().obtainStyledAttributes(attrs, R.styleable.CarNotificationActionsView);
+        mIsCategoryCall =
+                attributes.getBoolean(R.styleable.CarNotificationActionsView_categoryCall, false);
+        attributes.recycle();
     }
 
     @Override
@@ -75,7 +98,7 @@ public class CarNotificationActionsView extends RelativeLayout {
     /**
      * Binds the notification action buttons.
      *
-     * @param clickHandlerFactory   factory class used to generate {@link OnClickListener}s.
+     * @param clickHandlerFactory factory class used to generate {@link OnClickListener}s.
      * @param statusBarNotification the notification that contains the actions.
      */
     public void bind(
@@ -105,6 +128,22 @@ public class CarNotificationActionsView extends RelativeLayout {
                 button.setOnClickListener(clickHandlerFactory.getActionClickHandler(
                         statusBarNotification, i));
             }
+        }
+
+        if (mIsCategoryCall) {
+            Drawable acceptButton = mContext.getResources().getDrawable(
+                    R.drawable.call_action_button_background);
+            acceptButton.setColorFilter(
+                    new PorterDuffColorFilter(mContext.getColor(R.color.call_accept_button),
+                            PorterDuff.Mode.SRC_IN));
+            mActionButtons.get(0).setBackground(acceptButton);
+
+            Drawable declineButton = mContext.getResources().getDrawable(
+                    R.drawable.call_action_button_background);
+            declineButton.setColorFilter(
+                    new PorterDuffColorFilter(mContext.getColor(R.color.call_decline_button),
+                            PorterDuff.Mode.SRC_IN));
+            mActionButtons.get(1).setBackground(declineButton);
         }
     }
 
@@ -142,7 +181,20 @@ public class CarNotificationActionsView extends RelativeLayout {
                 button.setVisibility(View.VISIBLE);
             }
         }
-        // TODO: add mute button here.
+        createMuteButton(clickHandlerFactory, statusBarNotification);
+    }
+
+    private void createMuteButton(NotificationClickHandlerFactory clickHandlerFactory,
+            StatusBarNotification statusBarNotification) {
+        Button button = mActionButtons.get(MUTE_MESSAGE_ACTION_BUTTON_INDEX);
+        NotificationDataManager manager = clickHandlerFactory.getNotificationDataManager();
+        button.setText((manager != null && manager.isMessageNotificationMuted(
+                statusBarNotification))
+                ? mContext.getString(R.string.action_unmute_long)
+                : mContext.getString(R.string.action_mute_long));
+        button.setVisibility(View.VISIBLE);
+        button.setOnClickListener(clickHandlerFactory.getMuteClickHandler(
+                button, statusBarNotification));
     }
 
     /**
