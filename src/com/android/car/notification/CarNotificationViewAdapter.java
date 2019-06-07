@@ -19,16 +19,18 @@ import android.app.Notification;
 import android.car.drivingstate.CarUxRestrictions;
 import android.content.Context;
 import android.os.Bundle;
+import android.os.Handler;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 
-import androidx.recyclerview.widget.DiffUtil;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.car.notification.template.BasicNotificationViewHolder;
+import com.android.car.notification.template.CarNotificationFooterViewHolder;
+import com.android.car.notification.template.CarNotificationHeaderViewHolder;
 import com.android.car.notification.template.EmergencyNotificationViewHolder;
 import com.android.car.notification.template.GroupNotificationViewHolder;
 import com.android.car.notification.template.GroupSummaryNotificationViewHolder;
@@ -49,6 +51,11 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     private final LayoutInflater mInflater;
     private final int mMaxNumberGroupChildrenShown;
     private final boolean mIsGroupNotificationAdapter;
+    private final Handler mHandler = new Handler();
+
+    // Delay in posting notifyDataSetChanged for the adapter in milliseconds.
+    private final int mNotifyDataSetChangedDelay = 15;
+
     // book keeping expanded notification groups
     private final List<String> mExpandedNotifications = new ArrayList<>();
 
@@ -56,6 +63,9 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     private RecyclerView.RecycledViewPool mViewPool;
     private CarUxRestrictions mCarUxRestrictions;
     private NotificationClickHandlerFactory mClickHandlerFactory;
+    private NotificationDataManager mNotificationDataManager;
+
+    private Runnable mNotifyDataSetChangedRunnable = this::notifyDataSetChanged;
 
     /**
      * Constructor for a notification adapter.
@@ -81,6 +91,14 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
         RecyclerView.ViewHolder viewHolder;
         View view;
         switch (viewType) {
+            case NotificationViewType.HEADER:
+                view = mInflater.inflate(R.layout.notification_header_template, parent, false);
+                viewHolder = new CarNotificationHeaderViewHolder(view, mClickHandlerFactory);
+                break;
+            case NotificationViewType.FOOTER:
+                view = mInflater.inflate(R.layout.notification_footer_template, parent, false);
+                viewHolder = new CarNotificationFooterViewHolder(view, mClickHandlerFactory);
+                break;
             case NotificationViewType.GROUP_EXPANDED:
             case NotificationViewType.GROUP_COLLAPSED:
                 view = mInflater.inflate(
@@ -167,6 +185,12 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
         NotificationGroup notificationGroup = mNotifications.get(position);
 
         switch (holder.getItemViewType()) {
+            case NotificationViewType.HEADER:
+                ((CarNotificationHeaderViewHolder) holder).bind(getItemCount() > 1);
+                break;
+            case NotificationViewType.FOOTER:
+                ((CarNotificationFooterViewHolder) holder).bind(getItemCount() > 1);
+                break;
             case NotificationViewType.GROUP_EXPANDED:
                 ((GroupNotificationViewHolder) holder)
                         .bind(notificationGroup, this, /* isExpanded= */ true);
@@ -254,6 +278,14 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     @Override
     public int getItemViewType(int position) {
         NotificationGroup notificationGroup = mNotifications.get(position);
+
+        if (notificationGroup.isHeader()) {
+            return NotificationViewType.HEADER;
+        }
+
+        if (notificationGroup.isFooter()) {
+            return NotificationViewType.FOOTER;
+        }
 
         if (notificationGroup.isGroup()) {
             if (mExpandedNotifications.contains(notificationGroup.getGroupKey())) {
@@ -357,6 +389,14 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     @Override
     public long getItemId(int position) {
         NotificationGroup notificationGroup = mNotifications.get(position);
+        if (notificationGroup.isHeader()) {
+            return 0;
+        }
+
+        if (notificationGroup.isFooter()) {
+            return 1;
+        }
+
         return notificationGroup.isGroup()
                 ? notificationGroup.getGroupKey().hashCode()
                 : notificationGroup.getSingleNotification().getKey().hashCode();
@@ -404,12 +444,34 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     /**
      * Updates notifications and update views.
      */
-    public void setNotifications(List<NotificationGroup> notifications) {
-        DiffUtil.DiffResult diffResult =
-                DiffUtil.calculateDiff(
-                        new CarNotificationDiff(mContext, mNotifications, notifications), true);
-        mNotifications = notifications;
-        diffResult.dispatchUpdatesTo(this);
+    public void setNotifications(List<NotificationGroup> notifications, boolean setHeader) {
+
+        List<NotificationGroup> notificationGroupList =  new ArrayList<>(notifications);
+
+        if (setHeader) {
+            // add it as the first item of the list.
+            notificationGroupList.add(0, getNotifictaionHeader());
+            notificationGroupList.add(getNotifictaionFooter());
+        }
+
+        mNotifications = notificationGroupList;
+
+        mHandler.removeCallbacks(mNotifyDataSetChangedRunnable);
+        mHandler.postDelayed(mNotifyDataSetChangedRunnable, mNotifyDataSetChangedDelay);
+    }
+
+    private NotificationGroup getNotifictaionHeader(){
+        NotificationGroup notificationGroupWithHeader = new NotificationGroup();
+        notificationGroupWithHeader.setHeader(true);
+        notificationGroupWithHeader.setGroupKey("notification_header");
+        return notificationGroupWithHeader;
+    }
+
+    private NotificationGroup getNotifictaionFooter(){
+        NotificationGroup notificationGroupWithFooter = new NotificationGroup();
+        notificationGroupWithFooter.setFooter(true);
+        notificationGroupWithFooter.setGroupKey("notification_footer");
+        return notificationGroupWithFooter;
     }
 
     /**
@@ -450,5 +512,37 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
      */
     public void setClickHandlerFactory(NotificationClickHandlerFactory clickHandlerFactory) {
         mClickHandlerFactory = clickHandlerFactory;
+    }
+
+    /**
+     * Sets NotificationDataManager that handles additional states for notifications such as "seen",
+     * and muting a messaging type notification.
+     *
+     * @param notificationDataManager An instance of NotificationDataManager.
+     */
+    public void setNotificationDataManager(NotificationDataManager notificationDataManager) {
+        mNotificationDataManager = notificationDataManager;
+    }
+
+    /**
+     * Set the notification group as seen.
+     *
+     * @param position Adapter position of the notification group.
+     */
+    public void setNotificationAsSeen(int position) {
+        NotificationGroup notificationGroup = null;
+
+        try{
+            notificationGroup = mNotifications.get(position);
+        }catch(IndexOutOfBoundsException e){
+            Log.e(TAG, "trying to mark none existent notification as seen.");
+            return;
+        }
+
+        if (mNotificationDataManager != null) {
+            for (StatusBarNotification notification : notificationGroup.getChildNotifications()) {
+                mNotificationDataManager.setNotificationAsSeen(notification);
+            }
+        }
     }
 }

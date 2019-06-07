@@ -32,9 +32,7 @@ import android.util.Log;
 
 import com.android.car.assist.client.CarAssistUtils;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -46,7 +44,8 @@ import java.util.stream.Stream;
 public class CarNotificationListener extends NotificationListenerService {
     private static final String TAG = "CarNotificationListener";
     static final String ACTION_LOCAL_BINDING = "local_binding";
-    static final int NOTIFY_NOTIFICATIONS_CHANGED = 1;
+    static final int NOTIFY_NOTIFICATION_POSTED = 1;
+    static final int NOTIFY_NOTIFICATION_REMOVED = 2;
     /** Temporary {@link Ranking} object that serves as a reused value holder */
     final private Ranking mTemporaryRanking = new Ranking();
 
@@ -67,8 +66,10 @@ public class CarNotificationListener extends NotificationListenerService {
      * Call this if to register this service as a system service and connect to HUN. This is useful
      * if the notification service is being used as a lib instead of a standalone app. The
      * standalone app version has a manifest entry that will have the same effect.
-     *  @param context Context required for registering the service.
+     * @param context Context required for registering the service.
      * @param carUxRestrictionManagerWrapper will have the heads up manager registered with it.
+     * @param carHeadsUpNotificationManager HUN controller.
+     * @param notificationDataManager used for keeping track of additional notification states.
      */
     public void registerAsSystemService(Context context,
             CarUxRestrictionManagerWrapper carUxRestrictionManagerWrapper,
@@ -115,7 +116,7 @@ public class CarNotificationListener extends NotificationListenerService {
             return;
         }
         mRankingMap = rankingMap;
-        onNotificationAdded(sbn);
+        notifyNotificationPosted(sbn);
     }
 
     @Override
@@ -123,7 +124,7 @@ public class CarNotificationListener extends NotificationListenerService {
         Log.d(TAG, "onNotificationRemoved: " + sbn);
         mActiveNotifications.remove(sbn.getKey());
         mHeadsUpManager.maybeRemoveHeadsUp(sbn);
-        onNotificationChanged();
+        notifyNotificationRemoved(sbn);
     }
 
     @Override
@@ -139,7 +140,6 @@ public class CarNotificationListener extends NotificationListenerService {
                 sbn.setOverrideGroupKey(newOverrideGroupKey);
             }
         }
-        onNotificationChanged();
     }
 
     /**
@@ -157,10 +157,10 @@ public class CarNotificationListener extends NotificationListenerService {
     /**
      * Get all active notifications.
      *
-     * @return a list of all active notifications.
+     * @return a map of all active notifications with key being the notification key.
      */
-    List<StatusBarNotification> getNotifications() {
-        return new ArrayList<>(mActiveNotifications.values());
+    Map<String, StatusBarNotification> getNotifications() {
+        return mActiveNotifications;
     }
 
     @Override
@@ -183,25 +183,24 @@ public class CarNotificationListener extends NotificationListenerService {
         mHandler = handler;
     }
 
-    private void onNotificationChanged() {
+    private void notifyNotificationRemoved(StatusBarNotification sbn) {
         if (mHandler == null) {
             return;
         }
         Message msg = Message.obtain(mHandler);
-        msg.what = NOTIFY_NOTIFICATIONS_CHANGED;
+        msg.what = NOTIFY_NOTIFICATION_REMOVED;
+        msg.obj = sbn;
         mHandler.sendMessage(msg);
     }
 
-    private void onNotificationAdded(StatusBarNotification sbn) {
-        if (CarAssistUtils.isCarCompatibleMessagingNotification(sbn)) {
-            mNotificationDataManager.addNewMessageNotification(sbn);
-        }
+    private void notifyNotificationPosted(StatusBarNotification sbn) {
+        mNotificationDataManager.addNewMessageNotification(sbn);
         mHeadsUpManager.maybeShowHeadsUp(sbn, getCurrentRanking(), mActiveNotifications);
         if (mHandler == null) {
             return;
         }
         Message msg = Message.obtain(mHandler);
-        msg.what = NOTIFY_NOTIFICATIONS_CHANGED;
+        msg.what = NOTIFY_NOTIFICATION_POSTED;
         msg.obj = sbn;
         mHandler.sendMessage(msg);
     }
