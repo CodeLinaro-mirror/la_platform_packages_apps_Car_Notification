@@ -42,6 +42,16 @@ public class NotificationGroup {
     @Nullable
     private StatusBarNotification mGroupSummaryNotification;
 
+    private boolean mIsHeader;
+    private boolean mIsFooter;
+
+    public NotificationGroup() {
+    }
+
+    public NotificationGroup(StatusBarNotification statusBarNotification) {
+        addNotification(statusBarNotification);
+    }
+
     public void addNotification(StatusBarNotification statusBarNotification) {
         assertSameGroupKey(statusBarNotification.getGroupKey());
         mNotifications.add(statusBarNotification);
@@ -49,11 +59,6 @@ public class NotificationGroup {
 
     void setGroupSummaryNotification(StatusBarNotification groupSummaryNotification) {
         assertSameGroupKey(groupSummaryNotification.getGroupKey());
-        // There exists a group summary notification
-        if (mGroupSummaryNotification != null) {
-            mNotifications.add(groupSummaryNotification);
-            return;
-        }
         mGroupSummaryNotification = groupSummaryNotification;
     }
 
@@ -84,6 +89,34 @@ public class NotificationGroup {
      */
     public boolean isGroup() {
         return mGroupSummaryNotification != null && getChildCount() > 1;
+    }
+
+    /**
+     * Return true if the header is set to be displayed.
+     */
+    public boolean isHeader() {
+        return mIsHeader;
+    }
+
+    /**
+     * Set this to true if a header needs to be displayed with a title and a clear all button.
+     */
+    public void setHeader(boolean header) {
+        mIsHeader = header;
+    }
+
+    /**
+     * Return true if the header is set to be displayed.
+     */
+    public boolean isFooter() {
+        return mIsFooter;
+    }
+
+    /**
+     * Set this to true if a footer needs to be displayed with a clear all button.
+     */
+    public void setFooter(boolean footer) {
+        mIsFooter = footer;
     }
 
     /**
