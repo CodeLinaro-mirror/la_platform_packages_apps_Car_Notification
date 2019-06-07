@@ -46,7 +46,9 @@ public class CarNotificationCenterActivity extends Activity {
                     new NotificationViewController(mCarNotificationView,
                             mPreprocessingManager,
                             mNotificationListener,
-                            app.getCarUxRestrictionWrapper());
+                            app.getCarUxRestrictionWrapper(),
+                            new NotificationDataManager()
+                    );
             mNotificationViewController.enable();
             mNotificationListenerBound = true;
         }
@@ -78,11 +80,13 @@ public class CarNotificationCenterActivity extends Activity {
         Intent intent = new Intent(this, CarNotificationListener.class);
         intent.setAction(CarNotificationListener.ACTION_LOCAL_BINDING);
         bindService(intent, mNotificationListenerConnectionListener, Context.BIND_AUTO_CREATE);
+        mNotificationViewController.setIsInForeground(true);
     }
 
     @Override
     protected void onStop() {
         super.onStop();
+        mNotificationViewController.setIsInForeground(false);
         // Unbind notification listener
         if (mNotificationListenerBound) {
             mNotificationViewController.disable();
