@@ -23,11 +23,10 @@ import android.car.drivingstate.CarUxRestrictionsManager;
 import android.content.Context;
 import android.os.Bundle;
 import android.service.notification.NotificationListenerService;
+import android.service.notification.NotificationListenerService.RankingMap;
 import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.util.Log;
-
-import androidx.annotation.NonNull;
 
 import com.android.car.notification.template.MessageNotificationViewHolder;
 import com.android.internal.annotations.VisibleForTesting;
@@ -35,7 +34,9 @@ import com.android.internal.annotations.VisibleForTesting;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
@@ -47,19 +48,38 @@ import java.util.TreeMap;
  */
 public class PreprocessingManager {
     private static final String TAG = "PreprocessingManager";
-    private static PreprocessingManager mInstance;
+
     private final String mEllipsizedString;
+    private final Context mContext;
+
+    private static PreprocessingManager sInstance;
+
     private int mMaxStringLength = Integer.MAX_VALUE;
+    private Map<String, StatusBarNotification> mOldNotifications;
+    private List<NotificationGroup> mOldProcessedNotifications;
+    private NotificationListenerService.RankingMap mOldRankingMap;
+    private Map<String, Integer> mRanking = new HashMap<>();
 
     private PreprocessingManager(Context context) {
         mEllipsizedString = context.getString(R.string.ellipsized_string);
+        mContext = context;
     }
 
     public static PreprocessingManager getInstance(Context context) {
-        if (mInstance == null) {
-            mInstance = new PreprocessingManager(context);
+        if (sInstance == null) {
+            sInstance = new PreprocessingManager(context);
         }
-        return mInstance;
+        return sInstance;
+    }
+
+    /**
+     * Initialize the data when the UI becomes foreground.
+     */
+    public void init(Map<String, StatusBarNotification> notifications, RankingMap rankingMap) {
+        mOldNotifications = notifications;
+        mOldRankingMap = rankingMap;
+        mOldProcessedNotifications =
+                process(/* showLessImportantNotifications = */ false, notifications, rankingMap);
     }
 
     /**
@@ -73,15 +93,62 @@ public class PreprocessingManager {
      */
     public List<NotificationGroup> process(
             boolean showLessImportantNotifications,
-            @NonNull List<StatusBarNotification> notifications,
-            @NonNull NotificationListenerService.RankingMap rankingMap) {
+            Map<String, StatusBarNotification> notifications,
+            RankingMap rankingMap) {
 
         return new ArrayList<>(
                 rank(group(optimizeForDriving(
                         filter(showLessImportantNotifications,
-                                new ArrayList<>(notifications),
+                                new ArrayList<>(notifications.values()),
                                 rankingMap))),
                         rankingMap));
+    }
+
+    /**
+     * Create a new list of notifications based on existing list.
+     *
+     * @param showLessImportantNotifications whether less important notifications should be shown.
+     * @param newRankingMap the latest ranking map for the notifications.
+     * @return the new notification group list that should be shown to the user.
+     */
+    public List<NotificationGroup> updateNotifications(
+            boolean showLessImportantNotifications,
+            StatusBarNotification sbn,
+            int updateType,
+            RankingMap newRankingMap) {
+
+        boolean shouldFilter =
+                isLessImportantForegroundNotification(sbn, newRankingMap)
+                        || isMediaOrNavigationNotification(sbn);
+        if (shouldFilter) {
+            // if the new notification should be filtered out, return early
+            return mOldProcessedNotifications;
+        }
+
+        if (updateType == CarNotificationListener.NOTIFY_NOTIFICATION_REMOVED) {
+            // removal of a notification is the same as a normal preprocessing
+            mOldNotifications.remove(sbn.getKey());
+            mOldProcessedNotifications =
+                    process(showLessImportantNotifications, mOldNotifications, mOldRankingMap);
+        }
+
+        if (updateType == CarNotificationListener.NOTIFY_NOTIFICATION_POSTED) {
+            StatusBarNotification notification = optimizeForDriving(sbn);
+            boolean isUpdate = mOldNotifications.containsKey(notification.getKey());
+
+            if (isUpdate) {
+                // if is an update of the previous notification
+                mOldNotifications.put(notification.getKey(), notification);
+                return process(showLessImportantNotifications, mOldNotifications, mOldRankingMap);
+            } else {
+                // insert a new notification into the list
+                mOldNotifications.put(notification.getKey(), notification);
+                mOldProcessedNotifications = new ArrayList<>(
+                        additionalRank(additionalGroup(notification), newRankingMap));
+            }
+        }
+
+        return mOldProcessedNotifications;
     }
 
     /**
@@ -90,39 +157,45 @@ public class PreprocessingManager {
     private List<StatusBarNotification> filter(
             boolean showLessImportantNotifications,
             List<StatusBarNotification> notifications,
-            NotificationListenerService.RankingMap rankingMap) {
-        Log.d(TAG, "Number of notifications before filtering: " + notifications.size());
+            RankingMap rankingMap) {
         // remove less important foreground service notifications for car
         if (!showLessImportantNotifications) {
-            notifications.removeIf(
-                    statusBarNotification -> {
-                        boolean isForeground =
-                                (statusBarNotification.getNotification().flags
-                                        & Notification.FLAG_FOREGROUND_SERVICE) != 0;
-
-                        if (!isForeground) {
-                            return false;
-                        }
-
-                        int importance = 0;
-                        NotificationListenerService.Ranking ranking =
-                                new NotificationListenerService.Ranking();
-                        if (rankingMap.getRanking(statusBarNotification.getKey(), ranking)) {
-                            importance = ranking.getImportance();
-                        }
-                        return importance < NotificationManager.IMPORTANCE_DEFAULT;
-                    });
+            notifications.removeIf(statusBarNotification
+                    -> isLessImportantForegroundNotification(statusBarNotification,
+                    rankingMap));
 
             // remove media and navigation notifications in the notification center for car
-            notifications.removeIf(
-                    statusBarNotification -> {
-                        Notification notification = statusBarNotification.getNotification();
-                        return notification.isMediaNotification()
-                                || Notification.CATEGORY_NAVIGATION.equals(notification.category);
-                    });
+            notifications.removeIf(statusBarNotification
+                    -> isMediaOrNavigationNotification(statusBarNotification));
         }
-        Log.d(TAG, "Number of notifications after filtering: " + notifications.size());
         return notifications;
+    }
+
+    private boolean isLessImportantForegroundNotification(
+            StatusBarNotification statusBarNotification, RankingMap rankingMap) {
+        boolean isForeground =
+                (statusBarNotification.getNotification().flags
+                        & Notification.FLAG_FOREGROUND_SERVICE) != 0;
+
+        if (!isForeground) {
+            return false;
+        }
+
+        int importance = 0;
+        NotificationListenerService.Ranking ranking =
+                new NotificationListenerService.Ranking();
+        if (rankingMap.getRanking(statusBarNotification.getKey(), ranking)) {
+            importance = ranking.getImportance();
+        }
+        return importance < NotificationManager.IMPORTANCE_DEFAULT
+                && NotificationUtils.isSystemPrivilegedOrPlatformKey(mContext,
+                statusBarNotification);
+    }
+
+    private boolean isMediaOrNavigationNotification(StatusBarNotification statusBarNotification) {
+        Notification notification = statusBarNotification.getNotification();
+        return notification.isMediaNotification()
+                || Notification.CATEGORY_NAVIGATION.equals(notification.category);
     }
 
     /**
@@ -144,8 +217,8 @@ public class PreprocessingManager {
      * the original notification object passed in; no new object is created.
      *
      * <p> Note that message notifications are not trimmed, so that messages are preserved for
-     * assistant read-out. Instead, {@link MessageNotificationViewHolder} will be responsible for
-     * the presentation-level text truncation.
+     * assistant read-out. Instead, {@link MessageNotificationViewHolder} will be responsible
+     * for the presentation-level text truncation.
      */
     StatusBarNotification optimizeForDriving(StatusBarNotification notification) {
         if (Notification.CATEGORY_MESSAGE.equals(notification.getNotification().category)) {
@@ -245,17 +318,89 @@ public class PreprocessingManager {
                     }
                 });
 
+        // Fourth pass: if a notification is a group notification, update the timestamp if one of
+        // the children notifications shows a timestamp.
+        validGroupList.forEach(group -> {
+            if (!group.isGroup()) {
+                return;
+            }
+
+            StatusBarNotification groupSummaryNotification = group.getGroupSummaryNotification();
+            boolean showWhen = false;
+            long greatestTimestamp = 0;
+            for (StatusBarNotification notification : group.getChildNotifications()) {
+                if (notification.getNotification().showsTime()) {
+                    showWhen = true;
+                    greatestTimestamp = Math.max(greatestTimestamp,
+                            notification.getNotification().when);
+                }
+            }
+
+            if (showWhen) {
+                groupSummaryNotification.getNotification().extras.putBoolean(
+                        Notification.EXTRA_SHOW_WHEN, true);
+                groupSummaryNotification.getNotification().when = greatestTimestamp;
+            }
+        });
+
         return validGroupList;
+    }
+
+    /**
+     * Add new NotificationGroup to an existing list of NotificationGroups.
+     *
+     * @param newNotification the {@link StatusBarNotification} that should be added to the list.
+     * @return list of grouped notifications as {@link NotificationGroup}s.
+     */
+    private List<NotificationGroup> additionalGroup(StatusBarNotification newNotification) {
+        Notification notification = newNotification.getNotification();
+
+        if (notification.isGroupSummary()) {
+            // if child notifications already exist, ignore this insertion
+            for (String key : mOldNotifications.keySet()) {
+                if (hasSameGroupKey(mOldNotifications.get(key), newNotification)) {
+                    return mOldProcessedNotifications;
+                }
+            }
+            // if child notifications do not exist, insert the summary as a new notification
+            NotificationGroup newGroup = new NotificationGroup();
+            newGroup.setGroupSummaryNotification(newNotification);
+            mOldProcessedNotifications.add(newGroup);
+            return mOldProcessedNotifications;
+
+        } else {
+            for (int i = 0; i < mOldProcessedNotifications.size(); i++) {
+                NotificationGroup oldGroup = mOldProcessedNotifications.get(i);
+                // if a group already exists
+                if (TextUtils.equals(oldGroup.getGroupKey(), newNotification.getGroupKey())) {
+                    // if a standalone group summary exists, replace the group summary notification
+                    if (oldGroup.getChildCount() == 0) {
+                        mOldProcessedNotifications.add(i, new NotificationGroup(newNotification));
+                        return mOldProcessedNotifications;
+                    }
+                    // if a group already exist with multiple children, insert outside of the group
+                    mOldProcessedNotifications.add(new NotificationGroup(newNotification));
+                    return mOldProcessedNotifications;
+                }
+            }
+            // if it is a new notification, insert directly
+            mOldProcessedNotifications.add(new NotificationGroup(newNotification));
+            return mOldProcessedNotifications;
+        }
+    }
+
+    private boolean hasSameGroupKey(
+            StatusBarNotification notification1, StatusBarNotification notification2) {
+        return TextUtils.equals(notification1.getGroupKey(), notification2.getGroupKey());
     }
 
     /**
      * Rank notifications according to the ranking key supplied by the notification.
      */
-    private static List<NotificationGroup> rank(
-            List<NotificationGroup> notifications,
-            NotificationListenerService.RankingMap rankingMap) {
+    public List<NotificationGroup> rank(
+            List<NotificationGroup> notifications, RankingMap rankingMap) {
 
-        Collections.sort(notifications, new NotificationComparator(rankingMap));
+        Collections.sort(notifications, new NotificationComparator());
 
         // Rank within each group
         notifications.forEach(notificationGroup -> {
@@ -268,12 +413,25 @@ public class PreprocessingManager {
         return notifications;
     }
 
+    /**
+     * Only rank top-level notification groups because no children should be inserted into a group.
+     */
+    public List<NotificationGroup> additionalRank(
+            List<NotificationGroup> notifications, RankingMap newRankingMap) {
+
+        Collections.sort(
+                notifications, new AdditionalNotificationComparator(newRankingMap));
+
+        return notifications;
+    }
+
     public void setCarUxRestrictionManagerWrapper(CarUxRestrictionManagerWrapper manager) {
         try {
             if (manager == null || manager.getCurrentCarUxRestrictions() == null) {
                 return;
             }
-            mMaxStringLength = manager.getCurrentCarUxRestrictions().getMaxRestrictedStringLength();
+            mMaxStringLength =
+                    manager.getCurrentCarUxRestrictions().getMaxRestrictedStringLength();
         } catch (CarNotConnectedException e) {
             mMaxStringLength = Integer.MAX_VALUE;
             Log.e(TAG, "Failed to get UxRestrictions thus running unrestricted", e);
@@ -285,9 +443,9 @@ public class PreprocessingManager {
      * supplied, sort by the global ranking order.
      */
     private static class InGroupComparator implements Comparator<StatusBarNotification> {
-        private final NotificationListenerService.RankingMap mRankingMap;
+        private final RankingMap mRankingMap;
 
-        InGroupComparator(NotificationListenerService.RankingMap rankingMap) {
+        InGroupComparator(RankingMap rankingMap) {
             mRankingMap = rankingMap;
         }
 
@@ -312,26 +470,55 @@ public class PreprocessingManager {
     }
 
     /**
-     * Comparator that sorts the notification groups by their representative notification's rank.
+     * Comparator that sorts the notification groups by their representative notification's
+     * rank.
      */
-    private static class NotificationComparator implements Comparator<NotificationGroup> {
-        private final NotificationListenerService.RankingMap mRankingMap;
+    private class NotificationComparator implements Comparator<NotificationGroup> {
+        @Override
+        public int compare(NotificationGroup left, NotificationGroup right) {
+            return getRanking(left, null) - getRanking(right, null);
+        }
+    }
 
-        NotificationComparator(NotificationListenerService.RankingMap rankingMap) {
-            mRankingMap = rankingMap;
+    /**
+     * Comparator that sorts the notification groups by their representative notification's
+     * rank using both of the initial ranking map and the current ranking map.
+     *
+     * <p>Cache the ranking value so that it doesn't change over time.</p>
+     */
+    private class AdditionalNotificationComparator implements Comparator<NotificationGroup> {
+        private final RankingMap mNewRankingMap;
+
+        AdditionalNotificationComparator(RankingMap newRankingMap) {
+            mNewRankingMap = newRankingMap;
         }
 
         @Override
         public int compare(NotificationGroup left, NotificationGroup right) {
-            NotificationListenerService.Ranking leftRanking =
-                    new NotificationListenerService.Ranking();
-            mRankingMap.getRanking(left.getNotificationForSorting().getKey(), leftRanking);
+            int leftRankingNumber = getRanking(left, mNewRankingMap);
+            int rightRankingNumber = getRanking(right, mNewRankingMap);
+            return leftRankingNumber - rightRankingNumber;
+        }
+    }
 
+    private int getRanking(NotificationGroup group, RankingMap newRankingMap) {
+        int rankingNumber;
+
+        if (mRanking.containsKey(group.getGroupKey())) {
+            rankingNumber = mRanking.get(group.getGroupKey());
+        } else {
             NotificationListenerService.Ranking rightRanking =
                     new NotificationListenerService.Ranking();
-            mRankingMap.getRanking(right.getNotificationForSorting().getKey(), rightRanking);
-
-            return leftRanking.getRank() - rightRanking.getRank();
+            if (!mOldRankingMap.getRanking(
+                    group.getNotificationForSorting().getKey(), rightRanking)) {
+                if (newRankingMap != null) {
+                    newRankingMap.getRanking(
+                            group.getNotificationForSorting().getKey(), rightRanking);
+                }
+            }
+            rankingNumber = rightRanking.getRank();
         }
+        mRanking.putIfAbsent(group.getGroupKey(), rankingNumber);
+        return rankingNumber;
     }
 }
