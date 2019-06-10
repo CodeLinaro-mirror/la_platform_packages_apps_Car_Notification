@@ -32,6 +32,7 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
+import com.android.car.assist.CarVoiceInteractionSession;
 import com.android.car.assist.client.CarAssistUtils;
 import com.android.internal.statusbar.IStatusBarService;
 import com.android.internal.statusbar.NotificationVisibility;
@@ -149,25 +150,10 @@ public class NotificationClickHandlerFactory {
             boolean canceledExceptionThrown = false;
             int semanticAction = action.getSemanticAction();
             if (CarAssistUtils.isCarCompatibleMessagingNotification(statusBarNotification)) {
-                Context context = v.getContext().getApplicationContext();
-                if (semanticAction == Notification.Action.SEMANTIC_ACTION_MARK_AS_READ) {
-                    if (mCarAssistUtils == null) {
-                        mCarAssistUtils = new CarAssistUtils(context);
-                    }
-                    CarAssistUtils.ActionRequestCallback requestCallback = (error) -> {
-                        if (error) {
-                            mCallback.onNotificationClicked(ActivityManager.START_ABORTED);
-                            showToast(context, R.string.assist_action_failed_toast);
-                        } else {
-                            mCallback.onNotificationClicked(ActivityManager.START_SUCCESS);
-                        }
-                    };
-                    mCarAssistUtils.requestAssistantVoiceAction(statusBarNotification,
-                            semanticAction,
-                            requestCallback);
-                } else if (semanticAction == Notification.Action.SEMANTIC_ACTION_REPLY) {
+                if (semanticAction == Notification.Action.SEMANTIC_ACTION_REPLY) {
+                    Context context = v.getContext().getApplicationContext();
                     Intent resultIntent = addCannedReplyMessage(action, context);
-                    int result = sendPendingIntent(action, context, resultIntent);
+                    int result = sendPendingIntent(action.actionIntent, context, resultIntent);
                     if (result == ActivityManager.START_SUCCESS) {
                         showToast(context, R.string.toast_message_sent_success);
                     } else if (result == ActivityManager.START_ABORTED) {
@@ -175,7 +161,8 @@ public class NotificationClickHandlerFactory {
                     }
                 }
             } else {
-                int result = sendPendingIntent(action, /* context= */ null, /* resultIntent= */ null);
+                int result = sendPendingIntent(action.actionIntent, /* context= */ null,
+                        /* resultIntent= */ null);
                 if (result == ActivityManager.START_ABORTED) {
                     canceledExceptionThrown = true;
                 }
@@ -198,6 +185,33 @@ public class NotificationClickHandlerFactory {
 
     /**
      * Returns a {@link View.OnClickListener} that should be used for the
+     * {@param messageNotification}'s {@param playButton}. Once the message is read aloud, the
+     * pending intent should be returned to the messaging app, so it can mark it as read.
+     */
+    public View.OnClickListener getPlayClickHandler(StatusBarNotification messageNotification) {
+        return view -> {
+            if (!CarAssistUtils.isCarCompatibleMessagingNotification(messageNotification)) {
+                return;
+            }
+            Context context = view.getContext().getApplicationContext();
+            if (mCarAssistUtils == null) {
+                mCarAssistUtils = new CarAssistUtils(context);
+            }
+            CarAssistUtils.ActionRequestCallback requestCallback = hasError -> {
+                if (hasError) {
+                    showToast(context, R.string.assist_action_failed_toast);
+                    Log.e(TAG, "Assistant failed to read aloud the message");
+                }
+                // Don't trigger mCallback so the shade remains open.
+            };
+            mCarAssistUtils.requestAssistantVoiceAction(messageNotification,
+                    CarVoiceInteractionSession.VOICE_ACTION_READ_NOTIFICATION,
+                    requestCallback);
+        };
+    }
+
+    /**
+     * Returns a {@link View.OnClickListener} that should be used for the
      * {@param messageNotification}'s {@param muteButton}.
      */
     public View.OnClickListener getMuteClickHandler(
@@ -210,16 +224,15 @@ public class NotificationClickHandlerFactory {
                         (mNotificationDataManager.isMessageNotificationMuted(messageNotification))
                                 ? context.getString(R.string.action_unmute_long)
                                 : context.getString(R.string.action_mute_long));
-                mCallback.onNotificationClicked(ActivityManager.START_SUCCESS);
+                // Don't trigger mCallback so the shade remains open.
             } else {
               Log.d(TAG, "Could not set mute click handler as NotificationDataManager is null");
             }
         };
     }
 
-    private int sendPendingIntent(Notification.Action action, Context context,
+    private int sendPendingIntent(PendingIntent pendingIntent, Context context,
             Intent resultIntent) {
-        PendingIntent pendingIntent = action.actionIntent;
         try {
             return pendingIntent.sendAndReturnResult(/* context= */ context, /* code= */ 0,
                     /* intent= */ resultIntent, /* onFinished= */null,
