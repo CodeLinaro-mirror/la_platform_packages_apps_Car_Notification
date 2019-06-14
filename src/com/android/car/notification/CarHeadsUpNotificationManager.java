@@ -70,7 +70,6 @@ public class CarHeadsUpNotificationManager
     private final long mEnterAnimationDuration;
     private final long mAlphaEnterAnimationDuration;
     private final long mExitAnimationDuration;
-    private final int mNotificationHeadsUpCardMarginTop;
 
     private final KeyguardManager mKeyguardManager;
     private final CarUserManagerHelper mCarUserManagerHelper;
@@ -99,8 +98,6 @@ public class CarHeadsUpNotificationManager
         mNotificationDataManager = notificationDataManager;
         mBeeper = new Beeper(mContext);
         mDuration = mContext.getResources().getInteger(R.integer.headsup_notification_duration_ms);
-        mNotificationHeadsUpCardMarginTop = (int) mContext.getResources().getDimension(
-                        R.dimen.headsup_notification_top_margin);
         mMinDisplayDuration = mContext.getResources().getInteger(
                 R.integer.heads_up_notification_minimum_time);
         mEnterAnimationDuration =
@@ -454,8 +451,7 @@ public class CarHeadsUpNotificationManager
                             int height = cardView.getHeight();
                             info.setTouchableInsets(
                                     ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION);
-                            info.touchableRegion.set(minX, mNotificationHeadsUpCardMarginTop, maxX,
-                                    height + mNotificationHeadsUpCardMarginTop);
+                            info.touchableRegion.set(minX, 0, maxX, height);
                         });
         // Get the height of the notification view after onLayout()
         // in order animate the notification in

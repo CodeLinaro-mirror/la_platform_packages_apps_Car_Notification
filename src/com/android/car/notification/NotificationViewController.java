@@ -2,14 +2,12 @@ package com.android.car.notification;
 
 import android.car.CarNotConnectedException;
 import android.car.drivingstate.CarUxRestrictions;
-import android.os.Build;
 import android.os.Handler;
 import android.os.Message;
 import android.service.notification.StatusBarNotification;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
-
 import java.util.List;
 
 /**
@@ -39,11 +37,12 @@ public class NotificationViewController {
         mUxResitrictionListener = uxResitrictionListener;
         mNotificationDataManager = notificationDataManager;
 
-        // Long clicking on the notification center title toggles hiding media, navigation, and
-        // less important (< IMPORTANCE_DEFAULT) ongoing foreground service notifications.
-        // This is only available for ENG and USERDEBUG builds.
+        // Temporary hack for demo purposes: Long clicking on the notification center title toggles
+        // hiding media, navigation, and less important (< IMPORTANCE_DEFAULT) ongoing
+        // foreground service notifications.
+        // This hack should be removed after OEM integration.
         View view = mCarNotificationView.findViewById(R.id.notification_center_title);
-        if (view != null && (Build.IS_ENG || Build.IS_USERDEBUG)) {
+        if (view != null) {
             view.setOnLongClickListener(v -> {
                 mShowLessImportantNotifications = !mShowLessImportantNotifications;
                 Toast.makeText(
@@ -81,12 +80,11 @@ public class NotificationViewController {
     }
 
     /**
-     * Reset the list view. Called when the notification list is not in the foreground.
+     * Reset the list view. Called when the notification list is in the foreground.
      */
     public void setIsInForeground(boolean isInForeground) {
         mIsInForeground = isInForeground;
-        // Reset when we are not in foreground.
-        if (!mIsInForeground) {
+        if (mIsInForeground) {
             resetNotifications(mShowLessImportantNotifications);
         }
     }
@@ -114,12 +112,6 @@ public class NotificationViewController {
      */
     private void updateNotifications(
             boolean showLessImportantNotifications, int what, StatusBarNotification sbn) {
-
-        if (mPreprocessingManager.shouldFilter(sbn, mCarNotificationListener.getCurrentRanking())) {
-            // if the new notification should be filtered out, return early
-            return;
-        }
-
         mCarNotificationView.setNotifications(
                 mPreprocessingManager.updateNotifications(
                         showLessImportantNotifications,

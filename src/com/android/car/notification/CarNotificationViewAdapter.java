@@ -29,7 +29,6 @@ import android.view.ViewGroup;
 import androidx.recyclerview.widget.RecyclerView;
 
 import com.android.car.notification.template.BasicNotificationViewHolder;
-import com.android.car.notification.template.CallNotificationViewHolder;
 import com.android.car.notification.template.CarNotificationFooterViewHolder;
 import com.android.car.notification.template.CarNotificationHeaderViewHolder;
 import com.android.car.notification.template.EmergencyNotificationViewHolder;
@@ -48,15 +47,14 @@ import java.util.List;
 public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerView.ViewHolder> {
     private static final String TAG = "CarNotificationAdapter";
 
-    // Delay in posting notifyDataSetChanged for the adapter in milliseconds.
-    private static final int NOTIFY_DATASET_CHANGED_DELAY = 100;
-
     private final Context mContext;
     private final LayoutInflater mInflater;
     private final int mMaxNumberGroupChildrenShown;
     private final boolean mIsGroupNotificationAdapter;
     private final Handler mHandler = new Handler();
 
+    // Delay in posting notifyDataSetChanged for the adapter in milliseconds.
+    private final int mNotifyDataSetChangedDelay = 15;
 
     // book keeping expanded notification groups
     private final List<String> mExpandedNotifications = new ArrayList<>();
@@ -111,11 +109,6 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
                 view = mInflater
                         .inflate(R.layout.group_summary_notification_template, parent, false);
                 viewHolder = new GroupSummaryNotificationViewHolder(view, mClickHandlerFactory);
-                break;
-            case NotificationViewType.CALL:
-                view = mInflater
-                        .inflate(R.layout.call_notification_template, parent, false);
-                viewHolder = new CallNotificationViewHolder(view, mClickHandlerFactory);
                 break;
             case NotificationViewType.CAR_EMERGENCY:
                 view = mInflater.inflate(
@@ -193,10 +186,10 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
 
         switch (holder.getItemViewType()) {
             case NotificationViewType.HEADER:
-                ((CarNotificationHeaderViewHolder) holder).bind(hasNotifications());
+                ((CarNotificationHeaderViewHolder) holder).bind(getItemCount() > 1);
                 break;
             case NotificationViewType.FOOTER:
-                ((CarNotificationFooterViewHolder) holder).bind(hasNotifications());
+                ((CarNotificationFooterViewHolder) holder).bind(getItemCount() > 1);
                 break;
             case NotificationViewType.GROUP_EXPANDED:
                 ((GroupNotificationViewHolder) holder)
@@ -209,12 +202,6 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
             case NotificationViewType.GROUP_SUMMARY:
                 ((GroupSummaryNotificationViewHolder) holder).bind(notificationGroup);
                 break;
-            case NotificationViewType.CALL: {
-                StatusBarNotification notification = notificationGroup.getSingleNotification();
-                ((CallNotificationViewHolder) holder)
-                        .bind(notification, /* isInGroup= */ false, /* isHeadsUp= */ false);
-                break;
-            }
             case NotificationViewType.CAR_EMERGENCY: {
                 StatusBarNotification notification = notificationGroup.getSingleNotification();
                 ((EmergencyNotificationViewHolder) holder)
@@ -320,8 +307,6 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
         String category = notification.category;
         if (category != null) {
             switch (category) {
-                case Notification.CATEGORY_CALL:
-                    return NotificationViewType.CALL;
                 case Notification.CATEGORY_CAR_EMERGENCY:
                     return NotificationViewType.CAR_EMERGENCY;
                 case Notification.CATEGORY_CAR_WARNING:
@@ -458,45 +443,31 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
 
     /**
      * Updates notifications and update views.
-     *
-     * @param setRecyclerViewListHeaderAndFooter sets the header and footer on the entire list of
-     * items within the recycler view. This is NOT the header/footer for the grouped notifications.
      */
-    public void setNotifications(List<NotificationGroup> notifications,
-            boolean setRecyclerViewListHeaderAndFooter) {
+    public void setNotifications(List<NotificationGroup> notifications, boolean setHeader) {
 
-        List<NotificationGroup> notificationGroupList = new ArrayList<>(notifications);
+        List<NotificationGroup> notificationGroupList =  new ArrayList<>(notifications);
 
-        if (setRecyclerViewListHeaderAndFooter) {
-            // add header as the first item of the list.
-            notificationGroupList.add(0, createNotificationHeader());
-            // add footer as the last item of the list.
-            notificationGroupList.add(createNotificationFooter());
+        if (setHeader) {
+            // add it as the first item of the list.
+            notificationGroupList.add(0, getNotifictaionHeader());
+            notificationGroupList.add(getNotifictaionFooter());
         }
 
         mNotifications = notificationGroupList;
 
         mHandler.removeCallbacks(mNotifyDataSetChangedRunnable);
-        mHandler.postDelayed(mNotifyDataSetChangedRunnable, NOTIFY_DATASET_CHANGED_DELAY);
+        mHandler.postDelayed(mNotifyDataSetChangedRunnable, mNotifyDataSetChangedDelay);
     }
 
-    /**
-     * Notification list has header and footer by default. Therefore the min number of items in the
-     * adapter will always be two. If there are any notifications present the size will be more than
-     * two.
-     */
-    private boolean hasNotifications() {
-        return getItemCount() > 2;
-    }
-
-    private NotificationGroup createNotificationHeader() {
+    private NotificationGroup getNotifictaionHeader(){
         NotificationGroup notificationGroupWithHeader = new NotificationGroup();
         notificationGroupWithHeader.setHeader(true);
         notificationGroupWithHeader.setGroupKey("notification_header");
         return notificationGroupWithHeader;
     }
 
-    private NotificationGroup createNotificationFooter() {
+    private NotificationGroup getNotifictaionFooter(){
         NotificationGroup notificationGroupWithFooter = new NotificationGroup();
         notificationGroupWithFooter.setFooter(true);
         notificationGroupWithFooter.setGroupKey("notification_footer");
@@ -561,9 +532,9 @@ public class CarNotificationViewAdapter extends RecyclerView.Adapter<RecyclerVie
     public void setNotificationAsSeen(int position) {
         NotificationGroup notificationGroup = null;
 
-        try {
+        try{
             notificationGroup = mNotifications.get(position);
-        } catch (IndexOutOfBoundsException e) {
+        }catch(IndexOutOfBoundsException e){
             Log.e(TAG, "trying to mark none existent notification as seen.");
             return;
         }
