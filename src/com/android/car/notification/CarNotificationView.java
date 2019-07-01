@@ -83,7 +83,14 @@ public class CarNotificationView extends ConstraintLayout
      * Updates notifications and update views.
      */
     public void setNotifications(List<NotificationGroup> notifications) {
-        mAdapter.setNotifications(notifications, /* setHeader= */ true);
+        mAdapter.setNotifications(notifications, /* setRecyclerViewListHeaderAndFooter= */ true);
+    }
+
+    /**
+     * Collapses all expanded groups.
+     */
+    public void collapseAllGroups() {
+        mAdapter.collapseAllGroups();
     }
 
     @Override
@@ -103,6 +110,7 @@ public class CarNotificationView extends ConstraintLayout
     /**
      * Sets NotificationDataManager that handles additional states for notifications such as "seen",
      * and muting a messaging type notification.
+     *
      * @param notificationDataManager An instance of NotificationDataManager.
      */
     public void setNotificationDataManager(NotificationDataManager notificationDataManager) {
