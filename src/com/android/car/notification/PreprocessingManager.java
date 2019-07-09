@@ -39,6 +39,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.SortedMap;
 import java.util.TreeMap;
+import java.util.UUID;
 
 /**
  * Manager that filters, groups and ranks the notifications in the notification center.
@@ -117,14 +118,6 @@ public class PreprocessingManager {
             int updateType,
             RankingMap newRankingMap) {
 
-        boolean shouldFilter =
-                isLessImportantForegroundNotification(sbn, newRankingMap)
-                        || isMediaOrNavigationNotification(sbn);
-        if (shouldFilter) {
-            // if the new notification should be filtered out, return early
-            return mOldProcessedNotifications;
-        }
-
         if (updateType == CarNotificationListener.NOTIFY_NOTIFICATION_REMOVED) {
             // removal of a notification is the same as a normal preprocessing
             mOldNotifications.remove(sbn.getKey());
@@ -135,11 +128,11 @@ public class PreprocessingManager {
         if (updateType == CarNotificationListener.NOTIFY_NOTIFICATION_POSTED) {
             StatusBarNotification notification = optimizeForDriving(sbn);
             boolean isUpdate = mOldNotifications.containsKey(notification.getKey());
-
             if (isUpdate) {
                 // if is an update of the previous notification
                 mOldNotifications.put(notification.getKey(), notification);
-                return process(showLessImportantNotifications, mOldNotifications, mOldRankingMap);
+                mOldProcessedNotifications = process(showLessImportantNotifications,
+                        mOldNotifications, mOldRankingMap);
             } else {
                 // insert a new notification into the list
                 mOldNotifications.put(notification.getKey(), notification);
@@ -149,6 +142,15 @@ public class PreprocessingManager {
         }
 
         return mOldProcessedNotifications;
+    }
+
+    /**
+     * Returns true if the current {@link StatusBarNotification} should be filtered out and not
+     * added to the list.
+     */
+    boolean shouldFilter(StatusBarNotification sbn, RankingMap rankingMap) {
+        return isLessImportantForegroundNotification(sbn, rankingMap)
+                || isMediaOrNavigationNotification(sbn);
     }
 
     /**
@@ -275,7 +277,14 @@ public class PreprocessingManager {
             StatusBarNotification statusBarNotification = list.get(i);
             Notification notification = statusBarNotification.getNotification();
 
-            String groupKey = statusBarNotification.getGroupKey();
+            String groupKey;
+            if (Notification.CATEGORY_CALL.equals(notification.category)) {
+                // DO NOT group CATEGORY_CALL.
+                groupKey = UUID.randomUUID().toString();
+            } else {
+                groupKey = statusBarNotification.getGroupKey();
+            }
+
             if (!groupedNotifications.containsKey(groupKey)) {
                 NotificationGroup notificationGroup = new NotificationGroup();
                 groupedNotifications.put(groupKey, notificationGroup);
@@ -397,10 +406,10 @@ public class PreprocessingManager {
     /**
      * Rank notifications according to the ranking key supplied by the notification.
      */
-    public List<NotificationGroup> rank(
-            List<NotificationGroup> notifications, RankingMap rankingMap) {
+    private List<NotificationGroup> rank(List<NotificationGroup> notifications,
+            RankingMap rankingMap) {
 
-        Collections.sort(notifications, new NotificationComparator());
+        Collections.sort(notifications, new NotificationComparator(rankingMap));
 
         // Rank within each group
         notifications.forEach(notificationGroup -> {
@@ -470,13 +479,26 @@ public class PreprocessingManager {
     }
 
     /**
-     * Comparator that sorts the notification groups by their representative notification's
-     * rank.
+     * Comparator that sorts the notification groups by their representative notification's rank.
      */
     private class NotificationComparator implements Comparator<NotificationGroup> {
+        private final NotificationListenerService.RankingMap mRankingMap;
+
+        NotificationComparator(NotificationListenerService.RankingMap rankingMap) {
+            mRankingMap = rankingMap;
+        }
+
         @Override
         public int compare(NotificationGroup left, NotificationGroup right) {
-            return getRanking(left, null) - getRanking(right, null);
+            NotificationListenerService.Ranking leftRanking =
+                    new NotificationListenerService.Ranking();
+            mRankingMap.getRanking(left.getNotificationForSorting().getKey(), leftRanking);
+
+            NotificationListenerService.Ranking rightRanking =
+                    new NotificationListenerService.Ranking();
+            mRankingMap.getRanking(right.getNotificationForSorting().getKey(), rightRanking);
+
+            return leftRanking.getRank() - rightRanking.getRank();
         }
     }
 
