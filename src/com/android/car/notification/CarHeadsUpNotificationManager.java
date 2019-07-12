@@ -70,6 +70,7 @@ public class CarHeadsUpNotificationManager
     private final long mEnterAnimationDuration;
     private final long mAlphaEnterAnimationDuration;
     private final long mExitAnimationDuration;
+    private final int mNotificationHeadsUpCardMarginTop;
 
     private final KeyguardManager mKeyguardManager;
     private final CarUserManagerHelper mCarUserManagerHelper;
@@ -98,6 +99,8 @@ public class CarHeadsUpNotificationManager
         mNotificationDataManager = notificationDataManager;
         mBeeper = new Beeper(mContext);
         mDuration = mContext.getResources().getInteger(R.integer.headsup_notification_duration_ms);
+        mNotificationHeadsUpCardMarginTop = (int) mContext.getResources().getDimension(
+                R.dimen.headsup_notification_top_margin);
         mMinDisplayDuration = mContext.getResources().getInteger(
                 R.integer.heads_up_notification_minimum_time);
         mEnterAnimationDuration =
@@ -438,21 +441,8 @@ public class CarHeadsUpNotificationManager
         // measure the size of the card and make that area of the screen touchable
         currentNotification.getNotificationView().getViewTreeObserver()
                 .addOnComputeInternalInsetsListener(
-                        info -> {
-                            // If the panel is not on screen don't modify the touch region
-                            if (mHeadsUpPanel.getVisibility() != View.VISIBLE) return;
-                            int[] mTmpTwoArray = new int[2];
-                            View cardView = currentNotification.getNotificationView().findViewById(
-                                    R.id.card_view);
-                            if (cardView == null) return;
-                            cardView.getLocationOnScreen(mTmpTwoArray);
-                            int minX = mTmpTwoArray[0];
-                            int maxX = mTmpTwoArray[0] + cardView.getWidth();
-                            int height = cardView.getHeight();
-                            info.setTouchableInsets(
-                                    ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION);
-                            info.touchableRegion.set(minX, 0, maxX, height);
-                        });
+                        info -> setInternalInsetsInfo(info,
+                                currentNotification, /* panelExpanded= */false));
         // Get the height of the notification view after onLayout()
         // in order animate the notification in
         currentNotification.getNotificationView().getViewTreeObserver().addOnGlobalLayoutListener(
@@ -504,6 +494,32 @@ public class CarHeadsUpNotificationManager
                     new HeadsUpNotificationOnTouchListener(cardView, shouldDismissOnSwipe,
                             () -> resetView(statusBarNotification)));
         }
+    }
+
+    protected void setInternalInsetsInfo(ViewTreeObserver.InternalInsetsInfo info,
+            HeadsUpEntry currentNotification, boolean panelExpanded) {
+        // If the panel is not on screen don't modify the touch region
+        if (mHeadsUpPanel.getVisibility() != View.VISIBLE) return;
+        int[] mTmpTwoArray = new int[2];
+        View cardView = currentNotification.getNotificationView().findViewById(
+                R.id.card_view);
+
+        if (cardView == null) return;
+
+        if (panelExpanded) {
+            info.setTouchableInsets(
+                    ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_FRAME);
+            return;
+        }
+
+        cardView.getLocationOnScreen(mTmpTwoArray);
+        int minX = mTmpTwoArray[0];
+        int maxX = mTmpTwoArray[0] + cardView.getWidth();
+        int height = cardView.getHeight();
+        info.setTouchableInsets(
+                ViewTreeObserver.InternalInsetsInfo.TOUCHABLE_INSETS_REGION);
+        info.touchableRegion.set(minX, mNotificationHeadsUpCardMarginTop, maxX,
+                height + mNotificationHeadsUpCardMarginTop);
     }
 
     private void playSound(StatusBarNotification statusBarNotification,
