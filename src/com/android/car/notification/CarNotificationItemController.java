@@ -16,22 +16,12 @@
 
 package com.android.car.notification;
 
-import android.content.Context;
-import android.content.res.TypedArray;
-
-/** Utility to help theme certain components via code. */
-public class ThemesUtil {
-
-    private ThemesUtil() {
-    }
-
+/**
+ * Contains logic that controls notification items.
+ */
+public interface CarNotificationItemController {
     /**
-     * Returns the color assigned to the given attribute.
+     * Clears all dismissible notification items.
      */
-    public static int getAttrColor(Context context, int attr) {
-        TypedArray ta = context.obtainStyledAttributes(new int[]{attr});
-        int colorAccent = ta.getColor(0, 0);
-        ta.recycle();
-        return colorAccent;
-    }
+    void clearAllNotifications();
 }
