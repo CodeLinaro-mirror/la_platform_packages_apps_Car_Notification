@@ -31,7 +31,6 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.Handler;
 import android.os.UserHandle;
-import android.service.notification.StatusBarNotification;
 import android.telephony.TelephonyManager;
 import android.util.Log;
 
@@ -79,7 +78,7 @@ class Beeper {
     private BeepRecord currentBeep;
 
     public Beeper(Context context) {
-        this.mContext = context;
+        mContext = context;
         mAudioManager = ((AudioManager) context.getSystemService(Context.AUDIO_SERVICE));
         mInCallSoundToPlayUri = Uri.parse("file://" + context.getResources().getString(
                 com.android.internal.R.string.config_inCallNotificationSound));
@@ -93,7 +92,7 @@ class Beeper {
     /**
      * Beep with a provided sound.
      *
-     * @param packageName of which {@link StatusBarNotification} belongs to.
+     * @param packageName of which {@link AlertEntry} belongs to.
      * @param soundToPlay {@link Uri} from where the sound will be played.
      */
     @MainThread
@@ -171,7 +170,7 @@ class Beeper {
                 Log.d(TAG, "playing sound: ");
             }
             try {
-                mPlayer.setDataSource(getContextForForegroundUser(), mBeepUri);
+                mPlayer.setDataSource(getContextForForegroundUser(), mBeepUri, /* headers= */null);
                 mPlaybackAttributes = new AudioAttributes.Builder()
                         .setUsage(AudioAttributes.USAGE_NOTIFICATION)
                         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
