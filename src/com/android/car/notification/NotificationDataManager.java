@@ -19,12 +19,14 @@ import android.util.Log;
 
 import com.android.car.assist.client.CarAssistUtils;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Keeps track of the additional state of notifications. This class is not thread safe and should
@@ -61,6 +63,11 @@ public class NotificationDataManager {
      */
     private final Map<String, Boolean> mUnseenNotificationMap = new HashMap<>();
 
+    /**
+     * List of notifications that are visible to the user.
+     */
+    private final List<AlertEntry> mVisibleNotifications = new ArrayList<>();
+
     private OnUnseenCountUpdateListener mOnUnseenCountUpdateListener;
 
     public NotificationDataManager() {
@@ -88,6 +95,15 @@ public class NotificationDataManager {
                 if (mOnUnseenCountUpdateListener != null) {
                     mOnUnseenCountUpdateListener.onUnseenCountUpdate();
                 }
+            }
+        }
+    }
+
+    void untrackUnseenNotification(AlertEntry alertEntry) {
+        if (mUnseenNotificationMap.containsKey(alertEntry.getKey())) {
+            mUnseenNotificationMap.remove(alertEntry.getKey());
+            if (mOnUnseenCountUpdateListener != null) {
+                mOnUnseenCountUpdateListener.onUnseenCountUpdate();
             }
         }
     }
@@ -154,17 +170,21 @@ public class NotificationDataManager {
     public void clearAll() {
         mMessageNotificationToMuteStateMap.clear();
         mUnseenNotificationMap.clear();
+        mVisibleNotifications.clear();
 
         if (mOnUnseenCountUpdateListener != null) {
             mOnUnseenCountUpdateListener.onUnseenCountUpdate();
         }
     }
 
-    void setNotificationAsSeen(AlertEntry alertEntry) {
-        if (mUnseenNotificationMap.containsKey(alertEntry.getKey())) {
-            mUnseenNotificationMap.put(alertEntry.getKey(), false);
+    void setNotificationsAsSeen(List<AlertEntry> alertEntries) {
+        mVisibleNotifications.clear();
+        for (AlertEntry alertEntry : alertEntries) {
+            if (mUnseenNotificationMap.containsKey(alertEntry.getKey())) {
+                mUnseenNotificationMap.put(alertEntry.getKey(), false);
+                mVisibleNotifications.add(alertEntry);
+            }
         }
-
         if (mOnUnseenCountUpdateListener != null) {
             mOnUnseenCountUpdateListener.onUnseenCountUpdate();
         }
@@ -181,5 +201,24 @@ public class NotificationDataManager {
             }
         }
         return unseenCount;
+    }
+
+    /**
+     * Returns a collection containing all notifications the user should be seeing right now.
+     */
+    public List<AlertEntry> getVisibleNotifications() {
+        return mVisibleNotifications;
+    }
+
+    /**
+     * Returns seen notifications.
+     */
+    public String[] getSeenNotifications() {
+        return mUnseenNotificationMap.entrySet()
+                .stream()
+                // Seen notifications have value set to false
+                .filter(map -> !map.getValue())
+                .map(map -> map.getKey())
+                .toArray(String[]::new);
     }
 }
