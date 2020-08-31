@@ -309,6 +309,7 @@ public class CarNotificationListenerTest {
                 /* visuallyInterruptive= */ false,
                 /* isConversation= */ false,
                 /* shortcutInfo= */ null,
+                /* rankingAdjustment= */ 0,
                 /* isBubble= */ false);
         mRankingMap = new NotificationListenerService.RankingMap(
                 new NotificationListenerService.Ranking[]{ranking});
