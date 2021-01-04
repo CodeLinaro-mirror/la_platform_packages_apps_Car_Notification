@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Notification Manager for heads-up notifications in car.
@@ -303,11 +304,14 @@ public class CarHeadsUpNotificationManager
             currentNotification.setNotificationView(mInflater.inflate(
                     notificationTypeItem.getHeadsUpTemplate(),
                     null));
-            mHunContainer.displayNotification(currentNotification.getNotificationView());
+            mHunContainer.displayNotification(currentNotification.getNotificationView(),
+                    notificationTypeItem);
             currentNotification.setViewHolder(
                     notificationTypeItem.getViewHolder(currentNotification.getNotificationView(),
                             mClickHandlerFactory));
         }
+
+        currentNotification.getViewHolder().setHideDismissButton(!shouldDismissOnSwipe(alertEntry));
 
         if (mShouldRestrictMessagePreview && notificationTypeItem.getNotificationType()
                 == NotificationViewType.MESSAGE) {
@@ -332,25 +336,27 @@ public class CarHeadsUpNotificationManager
                         View view = currentNotification.getNotificationView();
                         if (shouldShowAnimation) {
                             mAnimationHelper.resetHUNPosition(view);
-
-                           AnimatorSet animatorSet = mAnimationHelper.getAnimateInAnimator(mContext, view);
-                           animatorSet.setTarget(view);
-                           animatorSet.start();
+                            AnimatorSet animatorSet = mAnimationHelper.getAnimateInAnimator(
+                                    mContext, view);
+                            animatorSet.setTarget(view);
+                            animatorSet.start();
                         }
                         view.getViewTreeObserver().removeOnGlobalLayoutListener(this);
                     }
                 });
 
         if (currentNotification.mIsNewHeadsUp) {
-            boolean shouldDismissOnSwipe = true;
-            if (shouldDismissOnSwipe(alertEntry)) {
-                shouldDismissOnSwipe = false;
-            }
             // Add swipe gesture
             View cardView = currentNotification.getNotificationView().findViewById(R.id.card_view);
-            cardView.setOnTouchListener(
-                    new HeadsUpNotificationOnTouchListener(cardView, shouldDismissOnSwipe,
-                            () -> resetView(alertEntry)));
+            cardView.setOnTouchListener(new HeadsUpNotificationOnTouchListener(cardView,
+                    shouldDismissOnSwipe(alertEntry), () -> resetView(alertEntry)));
+
+            // Add dismiss button listener
+            View dismissButton = currentNotification.getNotificationView().findViewById(
+                    R.id.dismiss_button);
+            if (dismissButton != null) {
+                dismissButton.setOnClickListener(v -> dismissHUN(alertEntry));
+            }
         }
     }
 
@@ -396,9 +402,9 @@ public class CarHeadsUpNotificationManager
     }
 
     private boolean shouldDismissOnSwipe(AlertEntry alertEntry) {
-        return hasFullScreenIntent(alertEntry)
-                && alertEntry.getNotification().category.equals(
-                Notification.CATEGORY_CALL) && alertEntry.getStatusBarNotification().isOngoing();
+        return !(hasFullScreenIntent(alertEntry)
+                && Objects.equals(alertEntry.getNotification().category, Notification.CATEGORY_CALL)
+                && alertEntry.getStatusBarNotification().isOngoing());
     }
 
     @VisibleForTesting
@@ -450,7 +456,7 @@ public class CarHeadsUpNotificationManager
                 mActiveHeadsUpNotifications.remove(alertEntry.getKey());
 
                 // If the HUN was not specifically removed then add it to the panel.
-                if(!isRemoved) {
+                if (!isRemoved) {
                     handleHeadsUpNotificationStateChanged(alertEntry, /* isHeadsUp= */ false);
                 }
             }
@@ -550,11 +556,8 @@ public class CarHeadsUpNotificationManager
         }
 
         // Allow for Call, and nav TBT categories.
-        if (Notification.CATEGORY_CALL.equals(notification.category)
-                || Notification.CATEGORY_NAVIGATION.equals(notification.category)) {
-            return true;
-        }
-        return false;
+        return Notification.CATEGORY_CALL.equals(notification.category)
+                || Notification.CATEGORY_NAVIGATION.equals(notification.category);
     }
 
     @VisibleForTesting
