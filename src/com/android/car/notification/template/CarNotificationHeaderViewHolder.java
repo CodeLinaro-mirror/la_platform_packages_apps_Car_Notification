@@ -33,8 +33,10 @@ import com.android.car.notification.R;
  * list is empty.
  */
 public class CarNotificationHeaderViewHolder extends RecyclerView.ViewHolder {
+
     private final TextView mNotificationHeaderText;
     private final Button mClearAllButton;
+    private final TextView mEmptyNotificationHeaderText;
     private final CarNotificationItemController mNotificationItemController;
     private final boolean mShowHeader;
 
@@ -50,6 +52,7 @@ public class CarNotificationHeaderViewHolder extends RecyclerView.ViewHolder {
 
         mNotificationHeaderText = view.findViewById(R.id.notification_header_text);
         mClearAllButton = view.findViewById(R.id.clear_all_button);
+        mEmptyNotificationHeaderText = view.findViewById(R.id.empty_notification_header_text);
         mShowHeader = context.getResources().getBoolean(R.bool.config_showHeaderForNotifications);
         mNotificationItemController = notificationItemController;
     }
@@ -58,6 +61,7 @@ public class CarNotificationHeaderViewHolder extends RecyclerView.ViewHolder {
     public void bind(boolean containsNotification) {
         if (containsNotification && mShowHeader) {
             mNotificationHeaderText.setVisibility(View.VISIBLE);
+            mEmptyNotificationHeaderText.setVisibility(View.GONE);
 
             if (mClearAllButton == null) {
                 return;
@@ -72,6 +76,11 @@ public class CarNotificationHeaderViewHolder extends RecyclerView.ViewHolder {
             return;
         }
 
+        if (containsNotification) {
+            mEmptyNotificationHeaderText.setVisibility(View.GONE);
+        } else {
+            mEmptyNotificationHeaderText.setVisibility(View.VISIBLE);
+        }
         mNotificationHeaderText.setVisibility(View.GONE);
 
         if (mClearAllButton != null) {

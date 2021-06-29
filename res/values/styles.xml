@@ -97,8 +97,5 @@
     <style name="ClearAllButtonFooter" parent="ClearAllButton">
     </style>
 
-    <style name="ManageButton" parent="ClearAllButton">
-    </style>
-
 </resources>
 

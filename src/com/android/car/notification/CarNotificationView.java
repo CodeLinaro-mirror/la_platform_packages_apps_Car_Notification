@@ -5,20 +5,15 @@ import android.animation.AnimatorInflater;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.animation.ObjectAnimator;
-import android.app.ActivityManager;
 import android.car.drivingstate.CarUxRestrictions;
 import android.car.drivingstate.CarUxRestrictionsManager;
 import android.content.Context;
-import android.content.Intent;
 import android.graphics.Rect;
 import android.os.Handler;
-import android.os.UserHandle;
-import android.provider.Settings;
 import android.util.AttributeSet;
 import android.view.KeyEvent;
 import android.view.View;
 import android.widget.Button;
-import android.widget.TextView;
 
 import androidx.annotation.NonNull;
 import androidx.constraintlayout.widget.ConstraintLayout;
@@ -27,8 +22,8 @@ import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.recyclerview.widget.RecyclerView.OnScrollListener;
 
-import com.android.car.uxr.UxrContentLimiterImpl;
 import com.android.internal.statusbar.IStatusBarService;
+import com.android.car.uxr.UxrContentLimiterImpl;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -45,6 +40,7 @@ import java.util.TreeMap;
  */
 public class CarNotificationView extends ConstraintLayout
         implements CarUxRestrictionsManager.OnUxRestrictionsChangedListener {
+
     public static final String TAG = "CarNotificationView";
 
     private CarNotificationViewAdapter mAdapter;
@@ -56,9 +52,6 @@ public class CarNotificationView extends ConstraintLayout
     private List<NotificationGroup> mNotifications;
     private UxrContentLimiterImpl mUxrContentLimiter;
     private KeyEventHandler mKeyEventHandler;
-    private RecyclerView mListView;
-    private Button mManageButton;
-    private TextView mEmptyNotificationHeaderText;
 
     public CarNotificationView(Context context, AttributeSet attrs) {
         super(context, attrs);
@@ -72,26 +65,26 @@ public class CarNotificationView extends ConstraintLayout
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
-        mListView = findViewById(R.id.notifications);
+        RecyclerView listView = findViewById(R.id.notifications);
 
-        mListView.setClipChildren(false);
+        listView.setClipChildren(false);
         mLayoutManager = new LinearLayoutManager(mContext);
-        mListView.setLayoutManager(mLayoutManager);
-        mListView.addItemDecoration(new TopAndBottomOffsetDecoration(
+        listView.setLayoutManager(mLayoutManager);
+        listView.addItemDecoration(new TopAndBottomOffsetDecoration(
                 mContext.getResources().getDimensionPixelSize(R.dimen.item_spacing)));
-        mListView.addItemDecoration(new ItemSpacingDecoration(
+        listView.addItemDecoration(new ItemSpacingDecoration(
                 mContext.getResources().getDimensionPixelSize(R.dimen.item_spacing)));
         mAdapter = new CarNotificationViewAdapter(mContext, /* isGroupNotificationAdapter= */
                 false, this::startClearAllNotifications);
-        mListView.setAdapter(mAdapter);
+        listView.setAdapter(mAdapter);
 
         mUxrContentLimiter = new UxrContentLimiterImpl(mContext, R.xml.uxr_config);
         mUxrContentLimiter.setAdapter(mAdapter);
         mUxrContentLimiter.start();
 
-        mListView.addOnItemTouchListener(new CarNotificationItemTouchListener(mContext, mAdapter));
+        listView.addOnItemTouchListener(new CarNotificationItemTouchListener(mContext, mAdapter));
 
-        mListView.addOnScrollListener(new OnScrollListener() {
+        listView.addOnScrollListener(new OnScrollListener() {
             @Override
             public void onScrollStateChanged(@NonNull RecyclerView recyclerView, int newState) {
                 super.onScrollStateChanged(recyclerView, newState);
@@ -101,7 +94,7 @@ public class CarNotificationView extends ConstraintLayout
                 }
             }
         });
-        mListView.setItemAnimator(new DefaultItemAnimator(){
+        listView.setItemAnimator(new DefaultItemAnimator(){
             @Override
             public boolean animateChange(RecyclerView.ViewHolder oldHolder, RecyclerView.ViewHolder
                     newHolder, int fromX, int fromY, int toX, int toY) {
@@ -113,9 +106,6 @@ public class CarNotificationView extends ConstraintLayout
         });
 
         Button clearAllButton = findViewById(R.id.clear_all_button);
-        mEmptyNotificationHeaderText = findViewById(R.id.empty_notification_text);
-        mManageButton = findViewById(R.id.manage_button);
-        mManageButton.setOnClickListener(this::manageButtonOnClickListener);
 
         if (clearAllButton != null) {
             clearAllButton.setOnClickListener(v -> startClearAllNotifications());
@@ -146,16 +136,6 @@ public class CarNotificationView extends ConstraintLayout
     public void setNotifications(List<NotificationGroup> notifications) {
         mNotifications = notifications;
         mAdapter.setNotifications(notifications, /* setRecyclerViewListHeaderAndFooter= */ true);
-
-        if (mAdapter.hasNotifications()) {
-            mListView.setVisibility(View.VISIBLE);
-            mEmptyNotificationHeaderText.setVisibility(View.GONE);
-            mManageButton.setVisibility(View.GONE);
-        } else {
-            mListView.setVisibility(View.GONE);
-            mEmptyNotificationHeaderText.setVisibility(View.VISIBLE);
-            mManageButton.setVisibility(View.VISIBLE);
-        }
     }
 
     /**
@@ -275,10 +255,11 @@ public class CarNotificationView extends ConstraintLayout
             notificationIds.add(id);
         });
 
+        RecyclerView listView = findViewById(R.id.notifications);
         TreeMap<Integer, View> notificationViews = new TreeMap<>();
-        for (int i = 0; i < mListView.getChildCount(); i++) {
-            View currentChildView = mListView.getChildAt(i);
-            RecyclerView.ViewHolder holder = mListView.getChildViewHolder(currentChildView);
+        for (int i = 0; i < listView.getChildCount(); i++) {
+            View currentChildView = listView.getChildAt(i);
+            RecyclerView.ViewHolder holder = listView.getChildViewHolder(currentChildView);
             int position = holder.getLayoutPosition();
             if (notificationIds.contains(mAdapter.getItemId(position))) {
                 notificationViews.put(position, currentChildView);
@@ -400,16 +381,6 @@ public class CarNotificationView extends ConstraintLayout
         if (firstVisible == RecyclerView.NO_POSITION) return;
 
         mAdapter.setNotificationsAsSeen(firstVisible, lastVisible);
-    }
-
-    private void manageButtonOnClickListener(View v) {
-        Intent intent = new Intent(Settings.ACTION_NOTIFICATION_SETTINGS);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
-        intent.addCategory(Intent.CATEGORY_DEFAULT);
-        mContext.startActivityAsUser(intent, UserHandle.of(ActivityManager.getCurrentUser()));
-
-        if (mClickHandlerFactory != null) mClickHandlerFactory.collapsePanel();
     }
 
     /** An interface to help interact with the notification panel. */
