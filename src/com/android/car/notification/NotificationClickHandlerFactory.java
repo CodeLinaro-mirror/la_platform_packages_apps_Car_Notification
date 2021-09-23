@@ -33,8 +33,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.Toast;
 
-import androidx.core.app.NotificationCompat;
 import androidx.annotation.VisibleForTesting;
+
+import androidx.core.app.NotificationCompat;
 
 import com.android.car.assist.CarVoiceInteractionSession;
 import com.android.car.assist.client.CarAssistUtils;
