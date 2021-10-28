@@ -15,18 +15,19 @@
  */
 package com.android.car.notification.template;
 
-import android.annotation.ColorInt;
+import static android.app.Notification.EXTRA_IS_GROUP_CONVERSATION;
+
+import android.annotation.Nullable;
 import android.app.Notification;
 import android.app.Person;
 import android.content.Context;
+import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.os.Bundle;
 import android.os.Parcelable;
+import android.service.notification.StatusBarNotification;
 import android.text.TextUtils;
 import android.view.View;
-import android.widget.DateTimeView;
-import android.widget.ImageView;
-import android.widget.TextView;
 
 import androidx.core.app.NotificationCompat.MessagingStyle;
 
@@ -41,36 +42,36 @@ import java.util.List;
  * Messaging notification template that displays a messaging notification and a voice reply button.
  */
 public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder {
-    @ColorInt
-    private final int mDefaultPrimaryForegroundColor;
+    private static final String SENDER_TITLE_SEPARATOR = " • ";
+    private static final String SENDER_BODY_SEPARATOR = ": ";
+    private static final String NEW_LINE = "\n";
+
     private final Context mContext;
     private final CarNotificationBodyView mBodyView;
     private final CarNotificationHeaderView mHeaderView;
     private final CarNotificationActionsView mActionsView;
-    private final TextView mTitleView;
-    private final DateTimeView mTimeView;
-    private final TextView mMessageView;
-    private final TextView mUnshownCountView;
-    private final ImageView mAvatarView;
+    private final String mNewMessageText;
+    private final int mMaxMessageCount;
+    private final int mMaxLineCount;
+    private final Drawable mGroupIcon;
+
     private NotificationClickHandlerFactory mClickHandlerFactory;
 
     public MessageNotificationViewHolder(
             View view, NotificationClickHandlerFactory clickHandlerFactory) {
         super(view, clickHandlerFactory);
-        mContext = view.getContext();
-        mDefaultPrimaryForegroundColor = mContext.getColor(R.color.primary_text_color);
         mHeaderView = view.findViewById(R.id.notification_header);
+        mContext = view.getContext();
         mActionsView = view.findViewById(R.id.notification_actions);
-        mTitleView = view.findViewById(R.id.notification_body_title);
-        mTimeView = view.findViewById(R.id.in_group_time_stamp);
-        if (mTimeView != null) {
-            // HUN template does not include the time stamp.
-            mTimeView.setShowRelativeTime(true);
-        }
-        mMessageView = view.findViewById(R.id.notification_body_content);
         mBodyView = view.findViewById(R.id.notification_body);
-        mUnshownCountView = view.findViewById(R.id.message_count);
-        mAvatarView = view.findViewById(R.id.notification_body_icon);
+
+        mNewMessageText = mContext.getString(R.string.restricted_hun_message_content);
+        mMaxMessageCount =
+                mContext.getResources().getInteger(R.integer.config_maxNumberOfMessagesInPanel);
+        mMaxLineCount =
+                mContext.getResources().getInteger(R.integer.config_maxNumberOfMessageLinesInPanel);
+        mGroupIcon = mContext.getDrawable(R.drawable.ic_group);
+
         mClickHandlerFactory = clickHandlerFactory;
     }
 
@@ -95,6 +96,7 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
         super.bind(alertEntry, isInGroup, isHeadsUp);
         bindBody(alertEntry, isInGroup, /* isRestricted= */ true, isHeadsUp);
         mHeaderView.bind(alertEntry, isInGroup);
+
         mActionsView.bind(mClickHandlerFactory, alertEntry);
     }
 
@@ -103,22 +105,29 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
      */
     private void bindBody(AlertEntry alertEntry, boolean isInGroup, boolean isRestricted,
             boolean isHeadsUp) {
-
+        mBodyView.setCountTextColor(getAccentColor());
         Notification notification = alertEntry.getNotification();
+        StatusBarNotification sbn = alertEntry.getStatusBarNotification();
+        Bundle extras = notification.extras;
         CharSequence messageText = null;
         CharSequence conversationTitle = null;
         Icon avatar = null;
         Integer messageCount = null;
 
-        final MessagingStyle messagingStyle =
+        List<Notification.MessagingStyle.Message> messages = null;
+        MessagingStyle messagingStyle =
                 MessagingStyle.extractMessagingStyleFromNotification(notification);
-        if (messagingStyle != null) conversationTitle = messagingStyle.getConversationTitle();
+        if (messagingStyle != null) {
+            conversationTitle = messagingStyle.getConversationTitle();
+        }
+        boolean isGroupConversation =
+                ((messagingStyle != null && messagingStyle.isGroupConversation())
+                        || extras.getBoolean(EXTRA_IS_GROUP_CONVERSATION));
 
-        Bundle extras = notification.extras;
         Parcelable[] messagesData = extras.getParcelableArray(Notification.EXTRA_MESSAGES);
         if (messagesData != null) {
-            List<Notification.MessagingStyle.Message> messages =
-                    Notification.MessagingStyle.Message.getMessagesFromBundleArray(messagesData);
+            messages = Notification.MessagingStyle.Message
+                    .getMessagesFromBundleArray(messagesData);
             if (messages != null && !messages.isEmpty()) {
                 messageCount = messages.size();
                 // Use the latest message
@@ -128,17 +137,33 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
                 if (sender != null) {
                     avatar = sender.getIcon();
                 }
-                if (conversationTitle == null) {
-                    conversationTitle = sender != null ? sender.getName() : message.getSender();
+                CharSequence senderName =
+                        (sender != null ? sender.getName() : message.getSender());
+                if (isGroupConversation && conversationTitle != null && isHeadsUp) {
+                    // If conversation title has been set, conversation is a group conversation
+                    // and notification is a HUN, then prepend sender's name to title.
+                    conversationTitle = senderName + SENDER_TITLE_SEPARATOR + conversationTitle;
+                } else if (conversationTitle == null) {
+                    // If conversation title has not been set, set it as sender's name.
+                    conversationTitle = senderName;
+                }
+
+                if (!isHeadsUp && isGroupConversation) {
+                    // If conversation is a group conversation and notification is not a HUN,
+                    // then prepend sender's name to title.
+                    messageText = senderName + SENDER_BODY_SEPARATOR + messageText;
                 }
             }
         }
 
-        // app did not use messaging style, fall back to standard fields
+        boolean messageStyleFlag = true;
+        // App did not use messaging style, fall back to standard fields
         if (messageCount == null) {
+            messageStyleFlag = false;
             messageCount = notification.number;
             if (messageCount == 0) {
-                messageCount = 1; // a notification should at least represent 1 message
+                // A notification should at least represent 1 message
+                messageCount = 1;
             }
         }
 
@@ -146,68 +171,103 @@ public class MessageNotificationViewHolder extends CarNotificationBaseViewHolder
             conversationTitle = extras.getCharSequence(Notification.EXTRA_TITLE);
         }
         if (isRestricted) {
-            messageText = mContext.getResources().getQuantityString(
-                    R.plurals.restricted_message_text, messageCount, messageCount);
+            if (isHeadsUp || messageCount == 1) {
+                messageText = mNewMessageText;
+            } else {
+                messageText =
+                        mContext.getString(R.string.restricted_numbered_message_content,
+                                messageCount);
+            }
         } else if (TextUtils.isEmpty(messageText)) {
             messageText = extras.getCharSequence(Notification.EXTRA_TEXT);
+        }
+        if (!TextUtils.isEmpty(messageText)) {
+            messageText = PreprocessingManager.getInstance(mContext).trimText(messageText);
         }
 
         if (avatar == null) {
             avatar = notification.getLargeIcon();
         }
 
-        if (!TextUtils.isEmpty(conversationTitle)) {
-            mTitleView.setVisibility(View.VISIBLE);
-            mTitleView.setText(conversationTitle);
+        Long when;
+        if (notification.showsTime()) {
+            when = notification.when;
+        } else {
+            when = null;
         }
 
-        if (isInGroup && notification.showsTime()) {
-            mTimeView.setVisibility(View.VISIBLE);
-            mTimeView.setTime(notification.when);
-        }
-
-        if (!TextUtils.isEmpty(messageText)) {
-            messageText = PreprocessingManager.getInstance(mContext).trimText(messageText);
-            mMessageView.setVisibility(View.VISIBLE);
-            mMessageView.setText(messageText);
-        }
-
-        if (avatar != null) {
-            mAvatarView.setVisibility(View.VISIBLE);
-            mAvatarView.setImageIcon(avatar);
+        Drawable groupIcon;
+        if (isGroupConversation) {
+            groupIcon = mGroupIcon;
+        } else {
+            groupIcon = null;
         }
 
         int unshownCount = messageCount - 1;
-        if (!isRestricted && unshownCount > 0) {
-            String unshownCountText =
-                    mContext.getString(R.string.message_unshown_count, unshownCount);
-            mUnshownCountView.setVisibility(View.VISIBLE);
-            mUnshownCountView.setText(unshownCountText);
-            mUnshownCountView.setTextColor(getAccentColor());
+        String unshownCountText = null;
+        if (!isRestricted && unshownCount > 0 && !isHeadsUp && messageStyleFlag) {
+            unshownCountText =
+                    mContext.getString(R.string.restricted_numbered_message_content, unshownCount);
+            View.OnClickListener listener =
+                    getCountViewOnClickListener(unshownCount, messages, isGroupConversation,
+                            sbn, conversationTitle, avatar, groupIcon, when);
+            mBodyView.setCountOnClickListener(listener);
         }
 
-        if (isHeadsUp) {
-            mBodyView.bindTitleAndMessage(conversationTitle, messageText);
-        }
+        mBodyView.bind(conversationTitle, messageText, loadAppLauncherIcon(sbn), avatar, groupIcon,
+                unshownCountText, when);
     }
 
     @Override
     void reset() {
         super.reset();
-        mTitleView.setVisibility(View.GONE);
-        mTitleView.setText(null);
-        if (mTimeView != null) {
-            mTimeView.setVisibility(View.GONE);
+        mBodyView.reset();
+        mHeaderView.reset();
+        mActionsView.reset();
+    }
+
+    private View.OnClickListener getCountViewOnClickListener(int unshownCount,
+            @Nullable List<Notification.MessagingStyle.Message> messages,
+            boolean isGroupConversation, StatusBarNotification sbn, CharSequence title,
+            @Nullable Icon avatar, @Nullable Drawable groupIcon, @Nullable Long when) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = messages.size() - 1; i >= messages.size() - 1 - mMaxMessageCount && i >= 0;
+                i--) {
+            if (i != messages.size() - 1) {
+                builder.append(NEW_LINE);
+                builder.append(NEW_LINE);
+            }
+            unshownCount--;
+            Notification.MessagingStyle.Message message = messages.get(i);
+            Person sender = message.getSenderPerson();
+            CharSequence senderName =
+                    (sender != null ? sender.getName() : message.getSender());
+            if (isGroupConversation) {
+                builder.append(senderName + SENDER_BODY_SEPARATOR + message.getText());
+            } else {
+                builder.append(message.getText());
+            }
+            if (builder.toString().split(NEW_LINE).length >= mMaxLineCount) {
+                break;
+            }
         }
+        String finalMessage = builder.toString();
 
-        mMessageView.setVisibility(View.GONE);
-        mMessageView.setText(null);
+        int finalUnshownCount = unshownCount;
+        return view -> {
+            String unshownCountText;
+            if (finalUnshownCount <= 0) {
+                unshownCountText = null;
+            } else {
+                unshownCountText =
+                        mContext.getString(R.string.message_unshown_count, finalUnshownCount);
+            }
 
-        mAvatarView.setVisibility(View.GONE);
-        mAvatarView.setImageIcon(null);
-
-        mUnshownCountView.setVisibility(View.GONE);
-        mUnshownCountView.setText(null);
-        mUnshownCountView.setTextColor(mDefaultPrimaryForegroundColor);
+            Drawable launcherIcon = loadAppLauncherIcon(sbn);
+            mBodyView.bind(title, finalMessage, launcherIcon, avatar, groupIcon, unshownCountText,
+                    when);
+            mBodyView.setContentMaxLines(mMaxLineCount);
+            mBodyView.setCountOnClickListener(null);
+        };
     }
 }
