@@ -101,6 +101,11 @@ public class NotificationViewController {
         mPreprocessingManager.init(mCarNotificationListener.getNotifications(),
                 mCarNotificationListener.getCurrentRanking());
 
+        if (DEBUG) {
+            Log.d(TAG, "Unprocessed notification map: "
+                    + mCarNotificationListener.getNotifications());
+        }
+
         List<NotificationGroup> notificationGroups = mPreprocessingManager.process(
                 showLessImportantNotifications,
                 mCarNotificationListener.getNotifications(),
@@ -135,17 +140,26 @@ public class NotificationViewController {
                 alertEntry,
                 what,
                 mCarNotificationListener.getCurrentRanking());
-        if (DEBUG) {
-            Log.d(TAG, "Updated notification groups: " + notificationGroups);
-        }
+        if (what == CarNotificationListener.NOTIFY_NOTIFICATION_REMOVED) {
+            mCarNotificationView.removeNotification(alertEntry);
+        } else {
+            if (DEBUG) {
+                Log.d(TAG, "Updated notification groups: " + notificationGroups);
+            }
 
-        mCarNotificationView.setNotifications(notificationGroups);
+            mCarNotificationView.setNotifications(notificationGroups);
+        }
     }
 
     private class NotificationUpdateHandler extends Handler {
         @Override
         public void handleMessage(Message message) {
             if (mIsVisible) {
+                if (message.what == CarNotificationListener.NOTIFY_RANKING_UPDATED) {
+                    // Do not update notifications if ranking is updated while panel is visible.
+                    return;
+                }
+
                 updateNotifications(
                         mShowLessImportantNotifications,
                         message.what,

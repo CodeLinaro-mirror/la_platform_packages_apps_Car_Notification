@@ -31,6 +31,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Keeps track of the additional state of notifications. This class is not thread safe and should
@@ -48,7 +49,7 @@ public class NotificationDataManager {
         void onUnseenCountUpdate();
     }
 
-    private static final boolean DEBUG = Build.IS_ENG || Build.IS_USERDEBUG;
+    private static final boolean DEBUG = Build.IS_DEBUGGABLE;
     private static final String TAG = "NotificationDataManager";
 
     private static NotificationDataManager sInstance;
@@ -72,7 +73,7 @@ public class NotificationDataManager {
     /**
      * List of notifications that are visible to the user.
      */
-    private final List<AlertEntry> mVisibleNotifications = new ArrayList<>();
+    private final Set<AlertEntry> mVisibleNotifications = new HashSet<>();
 
     private OnUnseenCountUpdateListener mOnUnseenCountUpdateListener;
 
@@ -112,10 +113,11 @@ public class NotificationDataManager {
 
             if (mUnseenNotificationMap.containsKey(alertEntry.getKey())) {
                 mUnseenNotificationMap.put(alertEntry.getKey(), true);
+                mVisibleNotifications.add(alertEntry);
 
                 if (mOnUnseenCountUpdateListener != null) {
                     if (DEBUG) {
-                        Log.d(TAG, "UnseenNotificationMap: " + mUnseenNotificationMap);
+                        Log.d(TAG, "Unseen notification map: " + mUnseenNotificationMap);
                     }
                     mOnUnseenCountUpdateListener.onUnseenCountUpdate();
                 }
@@ -219,7 +221,7 @@ public class NotificationDataManager {
 
         if (mOnUnseenCountUpdateListener != null) {
             if (DEBUG) {
-                Log.d(TAG, "UnseenNotificationMap: " + mUnseenNotificationMap);
+                Log.d(TAG, "Unseen notifications cleared");
             }
             mOnUnseenCountUpdateListener.onUnseenCountUpdate();
         }
@@ -235,7 +237,7 @@ public class NotificationDataManager {
         }
         if (mOnUnseenCountUpdateListener != null) {
             if (DEBUG) {
-                Log.d(TAG, "UnseenNotificationMap: " + mUnseenNotificationMap);
+                Log.d(TAG, "Unseen notification map: " + mUnseenNotificationMap);
             }
             mOnUnseenCountUpdateListener.onUnseenCountUpdate();
         }
@@ -257,6 +259,9 @@ public class NotificationDataManager {
                 }
             }
         });
+        if (DEBUG) {
+            Log.d(TAG, "Unseen notification map: " + mUnseenNotificationMap);
+        }
         return unseenCount[0];
     }
 
@@ -264,7 +269,7 @@ public class NotificationDataManager {
      * Returns a collection containing all notifications the user should be seeing right now.
      */
     public List<AlertEntry> getVisibleNotifications() {
-        return mVisibleNotifications;
+        return mVisibleNotifications.stream().collect(Collectors.toList());
     }
 
     /**

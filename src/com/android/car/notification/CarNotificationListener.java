@@ -52,6 +52,7 @@ public class CarNotificationListener extends NotificationListenerService impleme
     static final String ACTION_LOCAL_BINDING = "local_binding";
     static final int NOTIFY_NOTIFICATION_POSTED = 1;
     static final int NOTIFY_NOTIFICATION_REMOVED = 2;
+    static final int NOTIFY_RANKING_UPDATED = 3;
     /** Temporary {@link Ranking} object that serves as a reused value holder */
     final private Ranking mTemporaryRanking = new Ranking();
 
@@ -167,17 +168,33 @@ public class CarNotificationListener extends NotificationListenerService impleme
     @Override
     public void onNotificationRankingUpdate(RankingMap rankingMap) {
         mRankingMap = rankingMap;
+        boolean overrideGroupKeyUpdated = false;
         for (AlertEntry alertEntry : mActiveNotifications.values()) {
-            if (!mRankingMap.getRanking(alertEntry.getKey(), mTemporaryRanking)) {
-                continue;
-            }
-            String oldOverrideGroupKey =
-                    alertEntry.getStatusBarNotification().getOverrideGroupKey();
-            String newOverrideGroupKey = getOverrideGroupKey(alertEntry.getKey());
-            if (!Objects.equals(oldOverrideGroupKey, newOverrideGroupKey)) {
-                alertEntry.getStatusBarNotification().setOverrideGroupKey(newOverrideGroupKey);
+            if (updateOverrideGroupKey(alertEntry)) {
+                overrideGroupKeyUpdated = true;
             }
         }
+        if (overrideGroupKeyUpdated) {
+            sendNotificationEventToHandler(/* alertEntry= */ null, NOTIFY_RANKING_UPDATED);
+        }
+    }
+
+    private boolean updateOverrideGroupKey(AlertEntry alertEntry) {
+        if (!mRankingMap.getRanking(alertEntry.getKey(), mTemporaryRanking)) {
+            if (DEBUG) {
+                Log.d(TAG, "OverrideGroupKey not applied: " + alertEntry);
+            }
+            return false;
+        }
+
+        String oldOverrideGroupKey =
+                alertEntry.getStatusBarNotification().getOverrideGroupKey();
+        String newOverrideGroupKey = getOverrideGroupKey(alertEntry.getKey());
+        if (Objects.equals(oldOverrideGroupKey, newOverrideGroupKey)) {
+            return false;
+        }
+        alertEntry.getStatusBarNotification().setOverrideGroupKey(newOverrideGroupKey);
+        return true;
     }
 
     /**
@@ -237,6 +254,7 @@ public class CarNotificationListener extends NotificationListenerService impleme
             Log.d(TAG, "Is " + alertEntry + " shown as HUN?: " + isShowingHeadsUp);
         }
         if (!isShowingHeadsUp) {
+            updateOverrideGroupKey(alertEntry);
             postNewNotification(alertEntry);
         }
     }
@@ -253,6 +271,7 @@ public class CarNotificationListener extends NotificationListenerService impleme
     public void onStateChange(AlertEntry alertEntry, boolean isHeadsUp) {
         // No more a HUN
         if (!isHeadsUp) {
+            updateOverrideGroupKey(alertEntry);
             postNewNotification(alertEntry);
         }
     }
