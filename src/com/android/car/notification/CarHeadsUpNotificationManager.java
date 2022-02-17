@@ -97,7 +97,6 @@ public class CarHeadsUpNotificationManager
     private NotificationClickHandlerFactory mClickHandlerFactory;
     private NotificationDataManager mNotificationDataManager;
 
-
     public CarHeadsUpNotificationManager(Context context,
             NotificationClickHandlerFactory clickHandlerFactory,
             CarHeadsUpNotificationContainer hunContainer) {
@@ -192,19 +191,19 @@ public class CarHeadsUpNotificationManager
         if (currentActiveHeadsUpNotification == null) {
             return;
         }
-
+        currentActiveHeadsUpNotification.mShouldRemove = true;
         long totalDisplayDuration =
                 System.currentTimeMillis() - currentActiveHeadsUpNotification.getPostTime();
         // ongoing notification that has passed the minimum threshold display time.
         if (totalDisplayDuration >= mMinDisplayDuration) {
-            removeHun(alertEntry);
+            dismissHun(alertEntry);
             return;
         }
 
         long earliestRemovalTime = mMinDisplayDuration - totalDisplayDuration;
 
         currentActiveHeadsUpNotification.getHandler().postDelayed(() ->
-                removeHun(alertEntry), earliestRemovalTime);
+                dismissHun(alertEntry), earliestRemovalTime);
     }
 
     /**
@@ -480,7 +479,7 @@ public class CarHeadsUpNotificationManager
     /**
      * Animates the heads up notification out of the screen and reset the views.
      */
-    private void animateOutHun(AlertEntry alertEntry, boolean isRemoved) {
+    private void dismissHun(AlertEntry alertEntry) {
         Log.d(TAG, "clearViews for Heads Up Notification: ");
         // get the current notification to perform animations and remove it immediately from the
         // active notification maps and cancel all other call backs if any.
@@ -490,6 +489,11 @@ public class CarHeadsUpNotificationManager
         if (currentHeadsUpNotification == null) {
             return;
         }
+        // view could already be in the process of being dismissed
+        if (currentHeadsUpNotification.mIsDismissing) {
+            return;
+        }
+        currentHeadsUpNotification.mIsDismissing = true;
         currentHeadsUpNotification.getHandler().removeCallbacksAndMessages(null);
         resetViewTreeListenersEntry(currentHeadsUpNotification);
         View view = currentHeadsUpNotification.getNotificationView();
@@ -506,20 +510,12 @@ public class CarHeadsUpNotificationManager
                 mActiveHeadsUpNotifications.remove(alertEntry.getKey());
 
                 // If the HUN was not specifically removed then add it to the panel.
-                if (!isRemoved) {
+                if (!currentHeadsUpNotification.mShouldRemove) {
                     handleHeadsUpNotificationStateChanged(alertEntry, /* isHeadsUp= */ false);
                 }
             }
         });
         animatorSet.start();
-    }
-
-    private void dismissHun(AlertEntry alertEntry) {
-        animateOutHun(alertEntry, /* isRemoved= */ false);
-    }
-
-    private void removeHun(AlertEntry alertEntry) {
-        animateOutHun(alertEntry, /* isRemoved= */ true);
     }
 
     /**
