@@ -84,7 +84,6 @@ public class CarHeadsUpNotificationManager
     private HeadsUpNotificationAnimationHelper mAnimationHelper;
     private final int mNotificationHeadsUpCardMarginTop;
     private final boolean mIsSuppressAndThrottleHeadsUp;
-    private final CarHeadsUpNotificationQueue mCarHeadsUpNotificationQueue;
 
     private final KeyguardManager mKeyguardManager;
     private final PreprocessingManager mPreprocessingManager;
@@ -102,6 +101,7 @@ public class CarHeadsUpNotificationManager
     private boolean mShouldRestrictMessagePreview;
     private NotificationClickHandlerFactory mClickHandlerFactory;
     private NotificationDataManager mNotificationDataManager;
+    private CarHeadsUpNotificationQueue mCarHeadsUpNotificationQueue;
 
     public CarHeadsUpNotificationManager(Context context,
             NotificationClickHandlerFactory clickHandlerFactory,
@@ -396,11 +396,11 @@ public class CarHeadsUpNotificationManager
 
         if (mShouldRestrictMessagePreview && notificationTypeItem.getNotificationType()
                 == NotificationViewType.MESSAGE) {
-            ((MessageNotificationViewHolder) currentNotification.getViewHolder())
-                    .bindRestricted(alertEntry, /* isInGroup= */ false, /* isHeadsUp= */ true);
+            ((MessageNotificationViewHolder) currentNotification.getViewHolder()).bindRestricted(
+                    alertEntry, /* isInGroup= */ false, /* isHeadsUp= */ true, /* isSeen= */ false);
         } else {
             currentNotification.getViewHolder().bind(alertEntry, /* isInGroup= */false,
-                    /* isHeadsUp= */ true);
+                    /* isHeadsUp= */ true, /* isSeen= */ false);
         }
 
         resetViewTreeListenersEntry(currentNotification);
@@ -731,5 +731,10 @@ public class CarHeadsUpNotificationManager
     @VisibleForTesting
     public void setClickHandlerFactory(NotificationClickHandlerFactory clickHandlerFactory) {
         mClickHandlerFactory = clickHandlerFactory;
+    }
+
+    @VisibleForTesting
+    void setCarHeadsUpNotificationQueue(CarHeadsUpNotificationQueue carHeadsUpNotificationQueue) {
+        mCarHeadsUpNotificationQueue = carHeadsUpNotificationQueue;
     }
 }
