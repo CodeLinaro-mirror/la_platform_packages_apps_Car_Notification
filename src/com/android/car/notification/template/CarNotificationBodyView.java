@@ -103,12 +103,9 @@ public class CarNotificationBodyView extends RelativeLayout {
     }
 
     {
-        mDefaultPrimaryTextColor =
-                NotificationUtils.getAttrColor(getContext(), android.R.attr.textColorPrimary);
-        mDefaultSecondaryTextColor =
-                NotificationUtils.getAttrColor(getContext(), android.R.attr.textColorSecondary);
+        mDefaultPrimaryTextColor = getContext().getColor(R.color.primary_text_color);
+        mDefaultSecondaryTextColor = getContext().getColor(R.color.secondary_text_color);
         mDefaultUseLauncherIcon = getResources().getBoolean(R.bool.config_useLauncherIcon);
-        inflate(getContext(), R.layout.car_notification_body_view, /* root= */ this);
     }
 
     private void init(AttributeSet attrs) {
@@ -120,9 +117,12 @@ public class CarNotificationBodyView extends RelativeLayout {
         mMaxLines = attributes.getInteger(R.styleable.CarNotificationBodyView_maxLines,
                 /* defValue= */ DEFAULT_MAX_LINES);
         mIsHeadsUp =
-                attributes.getBoolean(R.styleable.CarNotificationHeaderView_isHeadsUp,
+                attributes.getBoolean(R.styleable.CarNotificationBodyView_isHeadsUp,
                         /* defValue= */ false);
         attributes.recycle();
+
+        inflate(getContext(), mIsHeadsUp ? R.layout.car_headsup_notification_body_view
+                : R.layout.car_notification_body_view, /* root= */ this);
     }
 
     @Override

@@ -16,7 +16,6 @@
 package com.android.car.notification;
 
 import android.annotation.Nullable;
-import android.app.ActivityManager;
 import android.app.NotificationManager;
 import android.content.ComponentName;
 import android.content.Context;
@@ -60,6 +59,7 @@ public class CarNotificationListener extends NotificationListenerService impleme
     private RankingMap mRankingMap;
     private CarHeadsUpNotificationManager mHeadsUpManager;
     private NotificationDataManager mNotificationDataManager;
+    private boolean mIsNotificationPanelVisible;
 
     /**
      * Map that contains all the active notifications that are not currently HUN. These
@@ -86,7 +86,7 @@ public class CarNotificationListener extends NotificationListenerService impleme
             mNotificationDataManager = NotificationDataManager.getInstance();
             registerAsSystemService(context,
                     new ComponentName(context.getPackageName(), getClass().getCanonicalName()),
-                    ActivityManager.getCurrentUser());
+                    NotificationUtils.getCurrentUser(context));
             mHeadsUpManager = carHeadsUpNotificationManager;
             mHeadsUpManager.registerHeadsUpNotificationStateChangeListener(this);
             carUxRestrictionManagerWrapper.setCarHeadsUpNotificationManager(
@@ -139,9 +139,9 @@ public class CarNotificationListener extends NotificationListenerService impleme
         }
         if (!isNotificationForCurrentUser(sbn)) {
             if (DEBUG) {
-                Log.d(TAG, "Notification is not for current user: " + sbn.toString());
+                Log.d(TAG, "Notification is not for current user: " + sbn);
                 Log.d(TAG, "Notification user: " + sbn.getUser().getIdentifier());
-                Log.d(TAG, "Current user: " + ActivityManager.getCurrentUser());
+                Log.d(TAG, "Current user: " + NotificationUtils.getCurrentUser(getContext()));
             }
             return;
         }
@@ -159,6 +159,15 @@ public class CarNotificationListener extends NotificationListenerService impleme
 
         if (DEBUG) {
             Log.d(TAG, "onNotificationRemoved: " + sbn);
+        }
+
+        if (!isNotificationForCurrentUser(sbn)) {
+            if (DEBUG) {
+                Log.d(TAG, "Notification is not for current user: " + sbn);
+                Log.d(TAG, "Notification user: " + sbn.getUser().getIdentifier());
+                Log.d(TAG, "Current user: " + NotificationUtils.getCurrentUser(getContext()));
+            }
+            return;
         }
 
         AlertEntry alertEntry = mActiveNotifications.get(sbn.getKey());
@@ -250,6 +259,17 @@ public class CarNotificationListener extends NotificationListenerService impleme
         mHandler = handler;
     }
 
+    /**
+     * Called when Notification Panel's visibility changes.
+     */
+    public void onVisibilityChanged(boolean isVisible) {
+        mIsNotificationPanelVisible = isVisible;
+        if (mIsNotificationPanelVisible) {
+            mHeadsUpManager.releaseQueue();
+        }
+    }
+
+
     private void notifyNotificationPosted(AlertEntry alertEntry) {
         if (isNotificationHigherThanLowImportance(alertEntry)) {
             mNotificationDataManager.addNewMessageNotification(alertEntry);
@@ -257,8 +277,12 @@ public class CarNotificationListener extends NotificationListenerService impleme
             mNotificationDataManager.untrackUnseenNotification(alertEntry);
         }
 
-        boolean isShowingHeadsUp = mHeadsUpManager.maybeShowHeadsUp(alertEntry, getCurrentRanking(),
-                mActiveNotifications);
+        boolean isShowingHeadsUp = false;
+        if (!mIsNotificationPanelVisible
+                || !CarHeadsUpNotificationManager.isHeadsUpDismissible(alertEntry)) {
+            isShowingHeadsUp = mHeadsUpManager.maybeShowHeadsUp(alertEntry, getCurrentRanking(),
+                    mActiveNotifications);
+        }
         if (DEBUG) {
             Log.d(TAG, "Is " + alertEntry + " shown as HUN?: " + isShowingHeadsUp);
         }
@@ -271,7 +295,7 @@ public class CarNotificationListener extends NotificationListenerService impleme
     private boolean isNotificationForCurrentUser(StatusBarNotification sbn) {
         // Notifications should only be shown for the current user and the the notifications from
         // the system when CarNotification is running as SystemUI component.
-        return (sbn.getUser().getIdentifier() == ActivityManager.getCurrentUser()
+        return (sbn.getUser().getIdentifier() == NotificationUtils.getCurrentUser(getContext())
                 || sbn.getUser().getIdentifier() == UserHandle.USER_ALL);
     }
 

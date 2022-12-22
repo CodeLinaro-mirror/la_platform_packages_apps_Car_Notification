@@ -19,11 +19,16 @@ package com.android.car.notification;
 import android.annotation.Nullable;
 import android.app.ActivityManager;
 import android.app.ActivityTaskManager;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.app.TaskStackListener;
 import android.car.drivingstate.CarUxRestrictionsManager;
 import android.content.Context;
 import android.os.RemoteException;
+import android.os.UserHandle;
 import android.service.notification.NotificationListenerService;
+import android.text.TextUtils;
 
 import androidx.annotation.AnyThread;
 
@@ -33,6 +38,7 @@ import java.time.Clock;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
 import java.util.Set;
@@ -42,6 +48,13 @@ import java.util.Set;
  */
 public class CarHeadsUpNotificationQueue implements
         CarHeadsUpNotificationManager.OnHeadsUpNotificationStateChange {
+    private static final String TAG = CarHeadsUpNotificationQueue.class.getSimpleName();
+    private static final String NOTIFICATION_CHANNEL_ID = "HUN_QUEUE_CHANNEL_ID";
+    private static final int NOTIFICATION_ID = 2000;
+    static final String CATEGORY_HUN_QUEUE_INTERNAL = "HUN_QUEUE_INTERNAL";
+
+    private final Context mContext;
+    private final NotificationManager mNotificationManager;
     private final PriorityQueue<String> mPriorityQueue;
     private final ActivityTaskManager mActivityTaskManager;
     private final CarHeadsUpNotificationQueueCallback mQueueCallback;
@@ -50,6 +63,10 @@ public class CarHeadsUpNotificationQueue implements
     private final long mNotificationExpirationTimeFromQueueWhenParked;
     private final boolean mExpireHeadsUpWhileDriving;
     private final boolean mExpireHeadsUpWhileParked;
+    private final boolean mDismissHeadsUpWhenNotificationCenterOpens;
+    private final String mNotificationTitleInParkState;
+    private final String mNotificationTitleInDriveState;
+    private final String mNotificationDescription;
     private final Set<String> mNotificationCategoriesForImmediateShow;
     private final Set<String> mPackagesToThrottleHeadsUp;
     private final Map<String, AlertEntry> mKeyToAlertEntryMap;
@@ -57,11 +74,19 @@ public class CarHeadsUpNotificationQueue implements
     private NotificationListenerService.RankingMap mRankingMap;
     private Clock mClock;
     private boolean mIsActiveUxRestriction;
+    private boolean mIsOngoingHeadsUpFlush;
+    @VisibleForTesting
+    boolean mAreNotificationsExpired;
+    @VisibleForTesting
+    boolean mCancelInternalNotificationOnStateChange;
 
     public CarHeadsUpNotificationQueue(Context context, ActivityTaskManager activityTaskManager,
+            NotificationManager notificationManager,
             CarHeadsUpNotificationQueueCallback queuePopCallback) {
+        mContext = context;
         mActivityTaskManager = activityTaskManager;
         mQueueCallback = queuePopCallback;
+        mNotificationManager = notificationManager;
         mKeyToAlertEntryMap = new HashMap<>();
         mThrottledDisplays = new HashSet<>();
 
@@ -69,6 +94,8 @@ public class CarHeadsUpNotificationQueue implements
                 R.bool.config_expireHeadsUpWhenDriving);
         mExpireHeadsUpWhileParked = context.getResources().getBoolean(
                 R.bool.config_expireHeadsUpWhenParked);
+        mDismissHeadsUpWhenNotificationCenterOpens = context.getResources().getBoolean(
+                R.bool.config_dismissHeadsUpWhenNotificationCenterOpens);
         mNotificationExpirationTimeFromQueueWhenDriving = context.getResources().getInteger(
                 R.integer.headsup_queue_expire_driving_duration_ms);
         mNotificationExpirationTimeFromQueueWhenParked = context.getResources().getInteger(
@@ -77,6 +104,14 @@ public class CarHeadsUpNotificationQueue implements
                 R.array.headsup_category_immediate_show));
         mPackagesToThrottleHeadsUp = Set.of(context.getResources().getStringArray(
                 R.array.headsup_throttled_foreground_packages));
+        String notificationChannelName = context.getResources().getString(
+                R.string.hun_suppression_channel_name);
+        mNotificationTitleInParkState = context.getResources().getString(
+                R.string.hun_suppression_notification_title_park);
+        mNotificationTitleInDriveState = context.getResources().getString(
+                R.string.hun_suppression_notification_title_drive);
+        mNotificationDescription = context.getResources().getString(
+                R.string.hun_suppression_notification_description);
 
         mPriorityQueue = new PriorityQueue<>(
                 new PrioritisedNotifications(context.getResources().getStringArray(
@@ -101,6 +136,10 @@ public class CarHeadsUpNotificationQueue implements
             }
         };
         mActivityTaskManager.registerTaskStackListener(mTaskStackListener);
+
+        mNotificationManager.createNotificationChannel(new NotificationChannel(
+                NOTIFICATION_CHANNEL_ID, notificationChannelName,
+                NotificationManager.IMPORTANCE_HIGH));
     }
 
     /**
@@ -110,7 +149,7 @@ public class CarHeadsUpNotificationQueue implements
             NotificationListenerService.RankingMap rankingMap) {
         mRankingMap = rankingMap;
         if (isCategoryImmediateShow(alertEntry.getNotification().category)) {
-            mQueueCallback.dismissAllActiveHeadsUp();
+            mQueueCallback.getActiveHeadsUpNotifications().forEach(mQueueCallback::dismissHeadsUp);
             mQueueCallback.showAsHeadsUp(alertEntry, rankingMap);
             return;
         }
@@ -131,23 +170,50 @@ public class CarHeadsUpNotificationQueue implements
     }
 
     /**
+     * Removes all notifications from the queue and optionally dismisses the active HUNs.
+     * Active HUN is not dismissed if it is not dismissible.
+     */
+    public void releaseQueue() {
+        mIsOngoingHeadsUpFlush = true;
+
+        if (mDismissHeadsUpWhenNotificationCenterOpens) {
+            mQueueCallback.getActiveHeadsUpNotifications().stream()
+                    .filter(CarHeadsUpNotificationManager::isHeadsUpDismissible)
+                    .forEach(mQueueCallback::dismissHeadsUp);
+        }
+        while (!mPriorityQueue.isEmpty()) {
+            String key = mPriorityQueue.poll();
+            if (mKeyToAlertEntryMap.containsKey(key)) {
+                mQueueCallback.removedFromHeadsUpQueue(mKeyToAlertEntryMap.get(key));
+                mKeyToAlertEntryMap.remove(key);
+            }
+        }
+        mIsOngoingHeadsUpFlush = false;
+    }
+
+    /**
      * Triggers {@code CarHeadsUpNotificationQueueCallback.showAsHeadsUp} on non expired HUN and
      * {@code CarHeadsUpNotificationQueueCallback.removedFromHeadsUpQueue} for expired HUN if
      * there are no active HUNs.
      */
     @VisibleForTesting
     void triggerCallback() {
-        if (mQueueCallback.isHunActive()) {
-            return;
-        }
-
-        if (!mThrottledDisplays.isEmpty()) {
+        if (!mQueueCallback.getActiveHeadsUpNotifications().isEmpty()
+                || !mThrottledDisplays.isEmpty()
+                || mIsOngoingHeadsUpFlush) {
             return;
         }
 
         AlertEntry alertEntry;
         do {
             if (mPriorityQueue.isEmpty()) {
+                if (mAreNotificationsExpired) {
+                    mAreNotificationsExpired = false;
+                    mNotificationManager.notifyAsUser(TAG, NOTIFICATION_ID,
+                            getUserNotificationForExpiredHun(),
+                            UserHandle.of(NotificationUtils.getCurrentUser(mContext)));
+                    mCancelInternalNotificationOnStateChange = true;
+                }
                 return;
             }
             String key = mPriorityQueue.poll();
@@ -164,7 +230,9 @@ public class CarHeadsUpNotificationQueue implements
                     !mIsActiveUxRestriction && mExpireHeadsUpWhileParked
                             && mNotificationExpirationTimeFromQueueWhenParked < timeElapsed);
 
-            if (isExpired) {
+            if (isExpired && !CATEGORY_HUN_QUEUE_INTERNAL.equals(
+                    alertEntry.getNotification().category)) {
+                mAreNotificationsExpired = true;
                 mQueueCallback.removedFromHeadsUpQueue(alertEntry);
                 alertEntry = null;
             }
@@ -179,9 +247,28 @@ public class CarHeadsUpNotificationQueue implements
         return category != null && mNotificationCategoriesForImmediateShow.contains(category);
     }
 
+    @VisibleForTesting
+    Notification getUserNotificationForExpiredHun() {
+        return new Notification
+                .Builder(mContext, NOTIFICATION_CHANNEL_ID)
+                .setCategory(CATEGORY_HUN_QUEUE_INTERNAL)
+                .setContentTitle(mIsActiveUxRestriction ? mNotificationTitleInDriveState
+                        : mNotificationTitleInParkState)
+                .setContentText(mNotificationDescription)
+                .setSmallIcon(R.drawable.car_ui_icon_settings)
+                .build();
+    }
+
     @Override
     public void onStateChange(AlertEntry alertEntry, boolean isHeadsUp) {
         if (!isHeadsUp) {
+            if (mCancelInternalNotificationOnStateChange && TextUtils.equals(
+                    alertEntry.getNotification().category, CATEGORY_HUN_QUEUE_INTERNAL)) {
+                mCancelInternalNotificationOnStateChange = false;
+                mAreNotificationsExpired = false;
+                mNotificationManager.cancelAsUser(TAG, NOTIFICATION_ID,
+                        UserHandle.of(NotificationUtils.getCurrentUser(mContext)));
+            }
             triggerCallback();
         }
     }
@@ -199,6 +286,7 @@ public class CarHeadsUpNotificationQueue implements
      */
     public void unregisterListeners() {
         mActivityTaskManager.unregisterTaskStackListener(mTaskStackListener);
+        mNotificationManager.deleteNotificationChannel(NOTIFICATION_CHANNEL_ID);
     }
 
     /**
@@ -218,14 +306,16 @@ public class CarHeadsUpNotificationQueue implements
         void removedFromHeadsUpQueue(AlertEntry alertEntry);
 
         /**
-         * Dismiss all active HUNs.
+         * Dismiss the active HUN.
+         *
+         * @param alertEntry the {@link AlertEntry} to be dismissed if present as active HUN
          */
-        void dismissAllActiveHeadsUp();
+        void dismissHeadsUp(@Nullable AlertEntry alertEntry);
 
         /**
-         * Returns {@code true} if there are active HUNs.
+         * @return list of active HUNs.
          */
-        boolean isHunActive();
+        List<AlertEntry> getActiveHeadsUpNotifications();
     }
 
     /**
@@ -247,14 +337,25 @@ public class CarHeadsUpNotificationQueue implements
             if (a == null || b == null) {
                 return 0;
             }
+
+            String categoryA = a.getNotification().category;
+            String categoryB = b.getNotification().category;
+
+            if (CATEGORY_HUN_QUEUE_INTERNAL.equals(categoryA)) {
+                return 1;
+            }
+            if (CATEGORY_HUN_QUEUE_INTERNAL.equals(categoryB)) {
+                return -1;
+            }
+
             int priorityA = -1;
             int priorityB = -1;
 
             for (int i = 0; i < mNotificationsCategoryInPriorityOrder.length; i++) {
-                if (mNotificationsCategoryInPriorityOrder[i].equals(a.getNotification().category)) {
+                if (mNotificationsCategoryInPriorityOrder[i].equals(categoryA)) {
                     priorityA = i;
                 }
-                if (mNotificationsCategoryInPriorityOrder[i].equals(b.getNotification().category)) {
+                if (mNotificationsCategoryInPriorityOrder[i].equals(categoryB)) {
                     priorityB = i;
                 }
             }
