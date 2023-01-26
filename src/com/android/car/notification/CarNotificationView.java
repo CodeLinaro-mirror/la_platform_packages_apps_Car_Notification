@@ -51,6 +51,8 @@ public class CarNotificationView extends ConstraintLayout
     public static final boolean DEBUG = Build.IS_DEBUGGABLE;
     public static final String TAG = "CarNotificationView";
 
+    private final boolean mCollapsePanelAfterManageButton;
+
     private CarNotificationViewAdapter mAdapter;
     private Context mContext;
     private LinearLayoutManager mLayoutManager;
@@ -68,6 +70,8 @@ public class CarNotificationView extends ConstraintLayout
         super(context, attrs);
         mContext = context;
         mNotificationDataManager = NotificationDataManager.getInstance();
+        mCollapsePanelAfterManageButton = context.getResources().getBoolean(
+                R.bool.config_collapseShadePanelAfterManageButtonPress);
     }
 
     /**
@@ -110,6 +114,9 @@ public class CarNotificationView extends ConstraintLayout
             @Override
             public boolean animateChange(RecyclerView.ViewHolder oldHolder, RecyclerView.ViewHolder
                     newHolder, int fromX, int fromY, int toX, int toY) {
+                if (oldHolder == newHolder) {
+                    return animateMove(newHolder, fromX, fromY, toX, toY);
+                }
                 // return without animation to prevent flashing on notification update.
                 dispatchChangeFinished(oldHolder, /* oldItem= */ true);
                 dispatchChangeFinished(newHolder, /* oldItem= */ false);
@@ -434,7 +441,9 @@ public class CarNotificationView extends ConstraintLayout
         mContext.startActivityAsUser(intent,
                 UserHandle.of(NotificationUtils.getCurrentUser(mContext)));
 
-        if (mClickHandlerFactory != null) mClickHandlerFactory.collapsePanel();
+        if (mClickHandlerFactory != null && mCollapsePanelAfterManageButton) {
+            mClickHandlerFactory.collapsePanel();
+        }
     }
 
     /** An interface to help interact with the notification panel. */
