@@ -24,6 +24,7 @@ import android.graphics.drawable.Drawable;
 import android.graphics.drawable.Icon;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemProperties;
 import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.view.View;
@@ -68,6 +69,8 @@ public class CarNotificationBodyView extends RelativeLayout {
     @Nullable
     private ImageView mTitleIconView;
 
+    private static boolean sIsBike = SystemProperties.getBoolean("ro.hw.vehicle.isbike", false);
+
     public CarNotificationBodyView(Context context) {
         super(context);
     }
@@ -99,8 +102,12 @@ public class CarNotificationBodyView extends RelativeLayout {
     private void init(AttributeSet attrs) {
         TypedArray attributes =
                 getContext().obtainStyledAttributes(attrs, R.styleable.CarNotificationBodyView);
-        mShowBigIcon = attributes.getBoolean(R.styleable.CarNotificationBodyView_showBigIcon,
-                /* defValue= */ false);
+        if (sIsBike) {
+            mShowBigIcon = true;
+        } else {
+            mShowBigIcon = attributes.getBoolean(R.styleable.CarNotificationBodyView_showBigIcon,
+                    /* defValue= */ false);
+        }
         mMaxLines = attributes.getInteger(R.styleable.CarNotificationBodyView_maxLines,
                 /* defValue= */ DEFAULT_MAX_LINES);
         mIsHeadsUp = attributes.getBoolean(R.styleable.CarNotificationHeaderView_isHeadsUp,
