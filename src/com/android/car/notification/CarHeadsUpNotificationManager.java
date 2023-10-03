@@ -45,6 +45,7 @@ import androidx.annotation.VisibleForTesting;
 import com.android.car.notification.headsup.CarHeadsUpNotificationContainer;
 import com.android.car.notification.headsup.animationhelper.HeadsUpNotificationAnimationHelper;
 import com.android.car.notification.template.MessageNotificationViewHolder;
+import com.android.car.notification.template.CarNotificationBaseViewHolder;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -508,6 +509,7 @@ public class CarHeadsUpNotificationManager
         currentHeadsUpNotification.getHandler().removeCallbacksAndMessages(null);
         resetViewTreeListenersEntry(currentHeadsUpNotification);
         View view = currentHeadsUpNotification.getNotificationView();
+        currentHeadsUpNotification.getViewHolder().flush();
 
         AnimatorSet animatorSet = mAnimationHelper.getAnimateOutAnimator(mContext, view);
         animatorSet.setTarget(view);

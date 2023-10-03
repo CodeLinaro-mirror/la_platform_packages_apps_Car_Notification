@@ -417,4 +417,8 @@ public abstract class CarNotificationBaseViewHolder extends RecyclerView.ViewHol
         PackageManager pm = packageContext.getPackageManager();
         return pm.getApplicationIcon(packageContext.getApplicationInfo());
     }
+
+    public void flush() {
+        itemView.getViewTreeObserver().removeOnGlobalFocusChangeListener(mFocusChangeListener);
+    }
 }
