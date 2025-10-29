@@ -26,7 +26,6 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.os.Message;
 import android.os.RemoteException;
-import android.os.SystemProperties;
 import android.os.UserHandle;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
@@ -62,9 +61,6 @@ public class CarNotificationListener extends NotificationListenerService impleme
     private CarHeadsUpNotificationManager mHeadsUpManager;
     private NotificationDataManager mNotificationDataManager;
     private boolean mIsNotificationPanelVisible;
-
-    private static boolean sIsBike
-            = SystemProperties.getBoolean("ro.hw.vehicle.isbike", false);
 
     /**
      * Map that contains all the active notifications that are not currently HUN. These
@@ -300,13 +296,8 @@ public class CarNotificationListener extends NotificationListenerService impleme
     private boolean isNotificationForCurrentUser(StatusBarNotification sbn) {
         // Notifications should only be shown for the current user and the the notifications from
         // the system when CarNotification is running as SystemUI component.
-        if (!sIsBike) {
-            return (sbn.getUser().getIdentifier() == NotificationUtils
-                    .getCurrentUser(getContext()) || sbn.getUser()
-                    .getIdentifier() == UserHandle.USER_ALL);
-        } else {
-            return true;
-        }
+        return (sbn.getUser().getIdentifier() == NotificationUtils.getCurrentUser(getContext())
+                || sbn.getUser().getIdentifier() == UserHandle.USER_ALL);
     }
 
 
