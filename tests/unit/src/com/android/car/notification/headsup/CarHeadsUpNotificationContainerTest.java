@@ -18,17 +18,26 @@ package com.android.car.notification.headsup;
 
 import static com.google.common.truth.Truth.assertThat;
 
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
 import android.content.Context;
+import android.content.res.Resources;
 import android.view.View;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
 import com.android.car.notification.CarNotificationTypeItem;
+import com.android.car.notification.R;
+import com.android.car.notification.headsup.animationhelper.CarHeadsUpNotificationBottomAnimationHelper;
+import com.android.car.notification.headsup.animationhelper.HeadsUpNotificationAnimationHelper;
 
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 
 @RunWith(AndroidJUnit4.class)
@@ -47,13 +56,19 @@ public class CarHeadsUpNotificationContainerTest {
     private View mNotificationView5;
     private View mNotificationView6;
 
+    @Mock
+    private Context mMockContext;
+    @Mock
+    private Resources mMockResources;
+
     @Before
     public void setup() {
         MockitoAnnotations.initMocks(this);
 
         Context context = ApplicationProvider.getApplicationContext();
-        mCarHeadsUpNotificationContainer = new CarHeadsUpNotificationContainer(
-                context);
+        mCarHeadsUpNotificationContainer = spy(new CarHeadsUpNotificationContainer(
+                context));
+        mCarHeadsUpNotificationContainer.inflateLayout(context);
 
         mCarHeadsUpNotificationContainer.getHunRootView().setVisibility(View.INVISIBLE);
 
@@ -69,6 +84,21 @@ public class CarHeadsUpNotificationContainerTest {
         mNotificationView5.setTag(TAG5);
         mNotificationView6 = new View(context);
         mNotificationView6.setTag(TAG6);
+
+        when(mMockContext.getResources()).thenReturn(mMockResources);
+    }
+
+    @Test
+    public void getAnimationHelper_withBottomHelper_returnsBottomHelper() {
+        String bottomHelperClass = CarHeadsUpNotificationBottomAnimationHelper.class.getName();
+        when(mMockResources.getString(R.string.config_headsUpNotificationAnimationHelper))
+                .thenReturn(bottomHelperClass);
+        CarHeadsUpNotificationContainer container =
+                new CarHeadsUpNotificationContainer(mMockContext);
+
+        HeadsUpNotificationAnimationHelper helper = container.getAnimationHelper();
+
+        assertThat(helper).isInstanceOf(CarHeadsUpNotificationBottomAnimationHelper.class);
     }
 
     @Test
@@ -229,6 +259,46 @@ public class CarHeadsUpNotificationContainerTest {
         mCarHeadsUpNotificationContainer.removeNotification(mNotificationView5);
 
         assertThat(mCarHeadsUpNotificationContainer.getHunContent().getChildAt(4)).isEqualTo(null);
+    }
+
+    @Test
+    public void initializeVisibility_setsRootViewInvisible() {
+        mCarHeadsUpNotificationContainer.getHunRootView().setVisibility(View.VISIBLE);
+        mCarHeadsUpNotificationContainer.initializeVisibility();
+        assertThat(mCarHeadsUpNotificationContainer.getHunRootView().getVisibility())
+                .isEqualTo(View.INVISIBLE);
+    }
+
+    @Test
+    public void displayNotification_shouldShow_callsPresentContainer() {
+        // Base setup makes shouldShowHunPanel() true
+        mCarHeadsUpNotificationContainer.displayNotification(mNotificationView1,
+                CarNotificationTypeItem.INBOX);
+        verify(mCarHeadsUpNotificationContainer).presentContainer();
+    }
+
+    @Test
+    public void removeNotification_shouldHide_callsDismissContainer() {
+        mCarHeadsUpNotificationContainer.displayNotification(mNotificationView1,
+                CarNotificationTypeItem.INBOX);
+        mCarHeadsUpNotificationContainer.removeNotification(mNotificationView1);
+        verify(mCarHeadsUpNotificationContainer).dismissContainer();
+    }
+
+    @Test
+    public void presentContainer_defaultImpl_setsRootViewVisible() {
+        mCarHeadsUpNotificationContainer.getHunRootView().setVisibility(View.INVISIBLE);
+        mCarHeadsUpNotificationContainer.presentContainer();
+        assertThat(mCarHeadsUpNotificationContainer.getHunRootView().getVisibility()).isEqualTo(
+                View.VISIBLE);
+    }
+
+    @Test
+    public void dismissContainer_defaultImpl_setsRootViewInvisible() {
+        mCarHeadsUpNotificationContainer.getHunRootView().setVisibility(View.VISIBLE);
+        mCarHeadsUpNotificationContainer.dismissContainer();
+        assertThat(mCarHeadsUpNotificationContainer.getHunRootView().getVisibility()).isEqualTo(
+                View.INVISIBLE);
     }
 
     private void displayOneNotificationOfEveryImportance() {
