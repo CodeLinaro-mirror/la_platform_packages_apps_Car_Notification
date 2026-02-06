@@ -41,6 +41,9 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.UserHandle;
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.StatusBarNotification;
 import android.testing.TestableContext;
@@ -53,8 +56,10 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import com.android.car.notification.headsup.CarHeadsUpNotificationContainer;
 import com.android.car.notification.headsup.animationhelper.HeadsUpNotificationAnimationHelper;
 import com.android.car.notification.utils.MockMessageNotificationBuilder;
+import com.android.systemui.car.Flags;
 
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -98,6 +103,8 @@ public class CarHeadsUpNotificationManagerTest {
     @Mock
     NotificationDataManager mNotificationDataManager;
     @Mock
+    StatusBarNotification mMockStatusBarNotification;
+    @Mock
     PackageManager mPackageManager;
     @Mock
     CarNotificationListener mCarNotificationListener;
@@ -115,6 +122,9 @@ public class CarHeadsUpNotificationManagerTest {
     private AnimatorSet mAnimatorSet;
     @Captor
     ArgumentCaptor<View> mViewCaptor;
+    @Rule
+    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
+
     private CarHeadsUpNotificationManager mManager;
     private AlertEntry mAlertEntryMessageHeadsUp;
     private AlertEntry mAlertEntryNavigationHeadsUp;
@@ -554,6 +564,24 @@ public class CarHeadsUpNotificationManagerTest {
                 .removeCallbacksAndMessages(any());
     }
 
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROMOTED_NOTIFICATIONS)
+    public void maybeShowOrScheduleHun_promotedOngoing_returnsTrueAndAddedToQueue()
+            throws PackageManager.NameNotFoundException {
+        setPackageInfo(PKG_1, /* isSystem= */ false, /* isSignedWithPlatformKey= */ false);
+        Notification notification = mock(Notification.class);
+        when(notification.isRequestPromotedOngoing()).thenReturn(true);
+        when(notification.isOngoingEvent()).thenReturn(true);
+        when(notification.hasTitle()).thenReturn(true);
+        AlertEntry alertEntry = new AlertEntry(new StatusBarNotification(PKG_1, OP_PKG, ID, TAG,
+                UID, INITIAL_PID, notification, USER_HANDLE, OVERRIDE_GROUP_KEY, POST_TIME));
+
+        boolean result = mManager.maybeShowOrScheduleHun(alertEntry, mActiveNotifications);
+
+        assertThat(result).isTrue();
+        verify(mCarHeadsUpNotificationQueue).addToQueue(alertEntry);
+    }
+
     private void createCarHeadsUpNotificationManager() {
         createCarHeadsUpNotificationManager(mCarHeadsUpNotificationQueue);
     }
@@ -591,6 +619,9 @@ public class CarHeadsUpNotificationManagerTest {
         HeadsUpEntry headsUpEntry = mock(HeadsUpEntry.class);
         when(headsUpEntry.getKey()).thenReturn(key);
         when(headsUpEntry.getHandler()).thenReturn(mHandlerMock);
+        Notification notification = new Notification();
+        when(mMockStatusBarNotification.getNotification()).thenReturn(notification);
+        when(headsUpEntry.getStatusBarNotification()).thenReturn(mMockStatusBarNotification);
         View headsUpNotificationView = mock(View.class);
         when(headsUpEntry.getNotificationView()).thenReturn(headsUpNotificationView);
         return headsUpEntry;

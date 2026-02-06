@@ -22,7 +22,9 @@ import static android.view.ViewTreeObserver.OnGlobalLayoutListener;
 
 import static com.android.car.assist.client.CarAssistUtils.isCarCompatibleMessagingNotification;
 import static com.android.car.notification.CarNotificationDiff.sameNotificationKey;
+import static com.android.car.notification.NotificationUtils.hasCarPromotableCharacteristics;
 import static com.android.car.notification.NotificationUtils.isCategoryCall;
+import static com.android.systemui.car.Flags.promotedNotifications;
 
 import android.animation.Animator;
 import android.animation.AnimatorListenerAdapter;
@@ -56,6 +58,7 @@ import com.android.car.notification.template.MessageNotificationViewHolder;
 
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -438,8 +441,7 @@ public class CarHeadsUpNotificationManager
             HeadsUpEntry newActiveHeadsUpNotification = new HeadsUpEntry(
                     alertEntry.getStatusBarNotification());
             handleHeadsUpNotificationStateChanged(alertEntry, HeadsUpState.SHOWN);
-            mActiveHeadsUpNotifications.put(alertEntry.getKey(),
-                    newActiveHeadsUpNotification);
+            addActiveHeadsUpNotification(newActiveHeadsUpNotification);
             newActiveHeadsUpNotification.mIsAlertAgain = alertAgain(
                     alertEntry.getNotification());
             newActiveHeadsUpNotification.mIsNewHeadsUp = true;
@@ -721,6 +723,9 @@ public class CarHeadsUpNotificationManager
             mHunContainer.removeNotification(view);
         }
         mActiveHeadsUpNotifications.remove(alertEntry.getKey());
+        // Remove for now as HeadsUp is going away. If this is moving to the notification center,
+        // it will be re-posted there via the state change listener.
+        updatePromotedNotifications(alertEntry, /* remove= */ true);
     }
 
     /**
@@ -816,6 +821,13 @@ public class CarHeadsUpNotificationManager
             Log.d(TAG, "Notification category: " + notification.category);
         }
 
+        if (promotedNotifications()) {
+            // Allow for Call, nav TBT and promotable categories.
+            return isCategoryCall(alertEntry)
+                    || Notification.CATEGORY_NAVIGATION.equals(notification.category)
+                    || hasCarPromotableCharacteristics(alertEntry);
+        }
+
         // Allow for Call, and nav TBT categories.
         return isCategoryCall(alertEntry)
                 || Notification.CATEGORY_NAVIGATION.equals(notification.category);
@@ -835,6 +847,14 @@ public class CarHeadsUpNotificationManager
      */
     private void tagCurrentActiveHunToBeRemoved(AlertEntry alertEntry) {
         mHeadsUpNotificationsToBeRemoved.add(alertEntry.getKey());
+    }
+
+    private void updatePromotedNotifications(AlertEntry changedEntry,
+            boolean remove) {
+        PromotedNotificationsRepository pnr =
+                PromotedNotificationsRepository.Companion.getInstance();
+        pnr.updateFromAlertEntries(Collections.singletonList(changedEntry),
+                /* isHeadsUp= */ true, remove);
     }
 
     @Override
@@ -875,6 +895,7 @@ public class CarHeadsUpNotificationManager
     @VisibleForTesting
     void addActiveHeadsUpNotification(HeadsUpEntry headsUpEntry) {
         mActiveHeadsUpNotifications.put(headsUpEntry.getKey(), headsUpEntry);
+        updatePromotedNotifications(headsUpEntry, /* remove= */ false);
     }
 
     @VisibleForTesting
