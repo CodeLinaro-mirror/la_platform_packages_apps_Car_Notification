@@ -20,7 +20,10 @@ package {
 android_app {
     name: "CarNotification",
 
-    srcs: ["src/**/*.java"],
+    srcs: [
+        "src/**/*.java",
+        "src/**/*.kt",
+    ],
 
     resource_dirs: ["res"],
 
@@ -40,9 +43,10 @@ android_app {
         "androidx.cardview_cardview",
         "androidx.recyclerview_recyclerview",
         "androidx.palette_palette",
+        "androidx-constraintlayout_constraintlayout",
         "car-assist-client-lib",
         "car-ui-lib-no-overlayable",
-        "androidx-constraintlayout_constraintlayout",
+        "com_android_systemui_car_flags_lib",
         "car-uxr-client-lib-no-overlayable",
         "oem-token-lib",
     ],
@@ -63,7 +67,10 @@ android_app {
 android_app {
     name: "CarNotificationForRoboTesting",
 
-    srcs: ["src/**/*.java"],
+    srcs: [
+        "src/**/*.java",
+        "src/**/*.kt",
+    ],
 
     // Testing only resources must be applied last so they take precedence.
     resource_dirs: [
@@ -87,10 +94,11 @@ android_app {
         "androidx.cardview_cardview",
         "androidx.recyclerview_recyclerview",
         "androidx.palette_palette",
+        "androidx-constraintlayout_constraintlayout",
         "car-assist-client-lib",
         "car-ui-lib-no-overlayable",
-        "androidx-constraintlayout_constraintlayout",
         "car-uxr-client-lib-no-overlayable",
+        "com_android_systemui_car_flags_lib",
         "oem-token-lib",
     ],
 
@@ -105,7 +113,10 @@ android_app {
 // As Lib
 android_library {
     name: "CarNotificationLib",
-    srcs: ["src/**/*.java"],
+    srcs: [
+        "src/**/*.java",
+        "src/**/*.kt",
+    ],
 
     resource_dirs: ["res"],
 
@@ -123,10 +134,11 @@ android_library {
         "androidx.cardview_cardview",
         "androidx.recyclerview_recyclerview",
         "androidx.palette_palette",
+        "androidx-constraintlayout_constraintlayout",
         "car-assist-client-lib",
         "car-ui-lib-no-overlayable",
-        "androidx-constraintlayout_constraintlayout",
         "car-uxr-client-lib-no-overlayable",
+        "com_android_systemui_car_flags_lib",
         "oem-token-lib",
     ],
 
@@ -172,6 +184,7 @@ android_library {
 
     srcs: [
         "src/**/*.java",
+        "src/**/*.kt",
     ],
 
     // Testing only resources must be applied last so they take precedence.
@@ -194,10 +207,11 @@ android_library {
         "androidx.cardview_cardview",
         "androidx.recyclerview_recyclerview",
         "androidx.palette_palette",
+        "androidx-constraintlayout_constraintlayout",
         "car-assist-client-lib",
         "car-ui-lib-no-overlayable",
-        "androidx-constraintlayout_constraintlayout",
         "car-uxr-client-lib-no-overlayable",
+        "com_android_systemui_car_flags_lib",
         "oem-token-lib",
     ],
 
