@@ -41,6 +41,9 @@ import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.UserHandle;
+import android.platform.test.annotations.RequiresFlagsEnabled;
+import android.platform.test.flag.junit.CheckFlagsRule;
+import android.platform.test.flag.junit.DeviceFlagsValueProvider;
 import android.service.notification.NotificationListenerService;
 import android.service.notification.SnoozeCriterion;
 import android.service.notification.StatusBarNotification;
@@ -52,7 +55,10 @@ import android.text.TextUtils;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
 
+import com.android.systemui.car.Flags;
+
 import org.junit.Before;
+import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -143,6 +149,8 @@ public class PreprocessingManagerTest {
     private PackageManager mPackageManager;
     @Mock
     private NotificationDataManager mNotificationDataManager;
+    @Rule
+    public final CheckFlagsRule mCheckFlagsRule = DeviceFlagsValueProvider.createCheckFlagsRule();
 
     private PreprocessingManager mPreprocessingManager;
 
@@ -1215,6 +1223,136 @@ public class PreprocessingManagerTest {
         assertThat(posted).isNotNull();
         assertThat(posted.getKey()).isEqualTo("ADDITIONAL");
         assertThat(afterSize).isEqualTo(beforeSize + 1);
+    }
+
+    @Test
+    public void onAdditionalGroupAndRank_isUpdateFalse_sameGroupKey_addsToExistingGroup() {
+        // Set threshold to 1 to ensure grouping happens with just 1 existing notification
+        setConfig(/* recentOld= */ true, /* launcherIcon= */ true, /* groupThreshold= */ 1);
+        PreprocessingManager.refreshInstance();
+        mPreprocessingManager = PreprocessingManager.getInstance(mContext);
+
+        String groupKey = "TEST_GROUP_KEY";
+        String key1 = "KEY_1";
+        String key2 = "KEY_2";
+
+        // Setup: existing notification in group
+        Notification notification1 = generateNotification(false, false, false, false);
+        StatusBarNotification sbn1 = mock(StatusBarNotification.class);
+        when(sbn1.getNotification()).thenReturn(notification1);
+        when(sbn1.getKey()).thenReturn(key1);
+        when(sbn1.getGroupKey()).thenReturn(groupKey);
+        AlertEntry entry1 = new AlertEntry(sbn1);
+
+        mAlertEntries.clear();
+        mAlertEntries.add(entry1);
+        mAlertEntriesMap.clear();
+        mAlertEntriesMap.put(key1, entry1);
+        mRankingMap = generateRankingMap(mAlertEntries);
+
+        mPreprocessingManager.init(mAlertEntriesMap, mRankingMap);
+
+        // New notification: same group key, different key
+        Notification notification2 = generateNotification(false, false, false, false);
+        StatusBarNotification sbn2 = mock(StatusBarNotification.class);
+        when(sbn2.getNotification()).thenReturn(notification2);
+        when(sbn2.getKey()).thenReturn(key2);
+        when(sbn2.getGroupKey()).thenReturn(groupKey);
+        AlertEntry entry2 = new AlertEntry(sbn2);
+
+        // Act
+        List<NotificationGroup> result = mPreprocessingManager.additionalGroupAndRank(
+                entry2, mRankingMap, /* isUpdate= */ false);
+
+        // Assert
+        assertThat(result).isNotNull();
+        List<NotificationGroup> groups = getGroupsWithGroupKey(groupKey, result);
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getChildCount()).isEqualTo(2);
+    }
+
+    @Test
+    public void onAdditionalGroupAndRank_isUpdateTrue_sameGroupKey_updatesExistingNotification() {
+        String groupKey = "TEST_GROUP_KEY";
+        String key1 = "KEY_1";
+
+        // Setup: existing notification in group
+        Notification notification1 = generateNotification(false, false, false, false);
+        StatusBarNotification sbn1 = mock(StatusBarNotification.class);
+        when(sbn1.getNotification()).thenReturn(notification1);
+        when(sbn1.getKey()).thenReturn(key1);
+        when(sbn1.getGroupKey()).thenReturn(groupKey);
+        AlertEntry entry1 = new AlertEntry(sbn1);
+
+        mAlertEntries.clear();
+        mAlertEntries.add(entry1);
+        mAlertEntriesMap.clear();
+        mAlertEntriesMap.put(key1, entry1);
+        mRankingMap = generateRankingMap(mAlertEntries);
+
+        mPreprocessingManager.init(mAlertEntriesMap, mRankingMap);
+
+        // Update notification: same key and group key
+        Notification notification2 = generateNotification(false, false, false, false);
+        notification2.extras.putString(Notification.EXTRA_TITLE, "UPDATED_TITLE");
+        StatusBarNotification sbn2 = mock(StatusBarNotification.class);
+        when(sbn2.getNotification()).thenReturn(notification2);
+        when(sbn2.getKey()).thenReturn(key1);
+        when(sbn2.getGroupKey()).thenReturn(groupKey);
+        AlertEntry entry2 = new AlertEntry(sbn2);
+
+        // Act
+        List<NotificationGroup> result = mPreprocessingManager.additionalGroupAndRank(
+                entry2, mRankingMap, /* isUpdate= */ true);
+
+        // Assert
+        assertThat(result).isNotNull();
+        List<NotificationGroup> groups = getGroupsWithGroupKey(groupKey, result);
+        assertThat(groups).hasSize(1);
+        assertThat(groups.get(0).getChildCount()).isEqualTo(1);
+        assertThat(groups.get(0).getChildNotifications().get(0).getNotification().extras.getString(
+                Notification.EXTRA_TITLE)).isEqualTo("UPDATED_TITLE");
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROMOTED_NOTIFICATIONS)
+    public void onGroup_promotedNotificationsEnabled_promotedNotification_notGrouped() {
+        Notification notification = mock(Notification.class);
+        when(notification.isRequestPromotedOngoing()).thenReturn(true);
+        when(notification.isOngoingEvent()).thenReturn(true);
+        when(notification.hasTitle()).thenReturn(true);
+        when(mImportantForeground.getNotification()).thenReturn(notification);
+
+        List<NotificationGroup> groupResult = mPreprocessingManager.group(mAlertEntries);
+
+        // Verify that the promoted notification is in its own group
+        boolean found = false;
+        for (NotificationGroup group : groupResult) {
+            if (group.getSingleNotification() != null
+                    && group.getSingleNotification().getKey().equals(
+                    mImportantForeground.getKey())) {
+                found = true;
+                break;
+            }
+        }
+        assertThat(found).isTrue();
+    }
+
+    @Test
+    @RequiresFlagsEnabled(Flags.FLAG_PROMOTED_NOTIFICATIONS)
+    public void onRank_promotedNotificationsEnabled_promotedNotification_rankedHigher() {
+        Notification notification = mock(Notification.class);
+        when(notification.isRequestPromotedOngoing()).thenReturn(true);
+        when(notification.isOngoingEvent()).thenReturn(true);
+        when(notification.hasTitle()).thenReturn(true);
+        when(mImportantForeground.getNotification()).thenReturn(notification);
+
+        List<NotificationGroup> groupResult = mPreprocessingManager.group(mAlertEntries);
+        List<NotificationGroup> rankResult = mPreprocessingManager.rank(groupResult, mRankingMap);
+
+        // Promoted notification should be ranked first (index 0)
+        assertThat(rankResult.get(0).getSingleNotification().getKey()).isEqualTo(
+                mImportantForeground.getKey());
     }
 
     private void setConfig(boolean recentOld, boolean launcherIcon, int groupThreshold) {
