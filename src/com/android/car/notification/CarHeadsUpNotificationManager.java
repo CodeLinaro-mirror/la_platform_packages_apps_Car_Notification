@@ -713,7 +713,7 @@ public class CarHeadsUpNotificationManager
     private boolean shouldShowHeadsUp(
             AlertEntry alertEntry,
             NotificationListenerService.RankingMap rankingMap) {
-        if (mKeyguardManager.isKeyguardLocked()) {
+        if (mKeyguardManager.isDeviceLocked(NotificationUtils.getCurrentUser(mContext))) {
             if (DEBUG) {
                 Log.d(TAG, "Unable to show as HUN: Keyguard is locked");
             }

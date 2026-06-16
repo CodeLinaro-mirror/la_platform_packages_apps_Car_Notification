@@ -144,7 +144,7 @@ public class CarHeadsUpNotificationManagerTest {
                 mContext.getResources());
         mContext.setMockPackageManager(mPackageManager);
 
-        when(mKeyguardManager.isKeyguardLocked()).thenReturn(false);
+        when(mKeyguardManager.isDeviceLocked(anyInt())).thenReturn(false);
         mContext.addMockSystemService(Context.KEYGUARD_SERVICE, mKeyguardManager);
 
         when(mClickHandlerFactory.getClickHandler(any())).thenReturn(v -> {
