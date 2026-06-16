@@ -759,7 +759,7 @@ public class CarHeadsUpNotificationManager
      * @return true if a notification should be shown as a heads-up
      */
     private boolean canShowOrScheduleHeadsUp(AlertEntry alertEntry) {
-        if (mKeyguardManager.isKeyguardLocked()) {
+        if (mKeyguardManager.isDeviceLocked(NotificationUtils.getCurrentUser(mContext))) {
             if (DEBUG) {
                 Log.d(TAG, "Unable to show as HUN: Keyguard is locked");
             }
